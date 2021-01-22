@@ -91,6 +91,11 @@ use yii\mutex\Mutex;
 class TestSetup
 {
     /**
+     * @since 3.6.0
+     */
+    const SITE_URL = 'https://test.craftcms.test/';
+
+    /**
      * @var array Project Config data
      */
     private static $_parsedProjectConfig = [];
@@ -252,6 +257,7 @@ class TestSetup
         return ArrayHelper::merge($config, [
             'class' => $class,
             'id' => 'craft-test',
+            'env' => 'test',
             'basePath' => $srcPath
         ]);
     }
@@ -337,6 +343,7 @@ class TestSetup
         Craft::setAlias('@vendor', $vendorPath);
         Craft::setAlias('@lib', $libPath);
         Craft::setAlias('@craft', $srcPath);
+        Craft::setAlias('@appicons', $srcPath . DIRECTORY_SEPARATOR . 'icons');
         Craft::setAlias('@config', $configPath);
         Craft::setAlias('@contentMigrations', $contentMigrationsPath);
         Craft::setAlias('@storage', $storagePath);
@@ -446,7 +453,7 @@ class TestSetup
             'name' => 'Craft test site',
             'handle' => 'default',
             'hasUrls' => true,
-            'baseUrl' => 'https://craftcms.com',
+            'baseUrl' => self::SITE_URL,
             'language' => 'en-US',
             'primary' => true,
         ];
@@ -477,10 +484,15 @@ class TestSetup
             'username' => 'craftcms',
             'password' => 'craftcms2018!!',
             'email' => 'support@craftcms.com',
-            'site' => $site
+            'site' => $site,
+            'applyProjectConfigYaml' => false,
         ]);
 
         $migration->safeUp();
+
+        if ($projectConfig) {
+            Craft::$app->getProjectConfig()->applyYamlChanges();
+        }
     }
 
     /**

@@ -24,6 +24,7 @@ use craft\helpers\DateTimeHelper;
 use craft\helpers\Db;
 use craft\helpers\Html;
 use craft\helpers\Json;
+use craft\helpers\StringHelper;
 use craft\helpers\UrlHelper;
 use craft\i18n\Locale;
 use craft\models\UserGroup;
@@ -63,7 +64,8 @@ class User extends Element implements IdentityInterface
     /**
      * @event AuthenticateUserEvent The event that is triggered before a user is authenticated.
      *
-     * You may set [[AuthenticateUserEvent::performAuthentication]] to `false` to prevent the user from getting authenticated
+     * If you wish to offload authentication logic, then set [[AuthenticateUserEvent::$performAuthentication]] to `false`, and set [[$authError]] to
+     * something if there is an authentication error.
      */
     const EVENT_BEFORE_AUTHENTICATE = 'beforeAuthenticate';
 
@@ -271,16 +273,22 @@ class User extends Element implements IdentityInterface
                 'email' => Craft::t('app', 'Email'),
                 'firstName' => Craft::t('app', 'First Name'),
                 'lastName' => Craft::t('app', 'Last Name'),
-                'lastLoginDate' => Craft::t('app', 'Last Login'),
+                [
+                    'label' => Craft::t('app', 'Last Login'),
+                    'orderBy' => 'lastLoginDate',
+                    'defaultDir' => 'desc',
+                ],
                 [
                     'label' => Craft::t('app', 'Date Created'),
                     'orderBy' => 'elements.dateCreated',
-                    'attribute' => 'dateCreated'
+                    'attribute' => 'dateCreated',
+                    'defaultDir' => 'desc',
                 ],
                 [
                     'label' => Craft::t('app', 'Date Updated'),
                     'orderBy' => 'elements.dateUpdated',
-                    'attribute' => 'dateUpdated'
+                    'attribute' => 'dateUpdated',
+                    'defaultDir' => 'desc',
                 ],
                 [
                     'label' => Craft::t('app', 'ID'),
@@ -294,16 +302,22 @@ class User extends Element implements IdentityInterface
                 'firstName' => Craft::t('app', 'First Name'),
                 'lastName' => Craft::t('app', 'Last Name'),
                 'email' => Craft::t('app', 'Email'),
-                'lastLoginDate' => Craft::t('app', 'Last Login'),
+                [
+                    'label' => Craft::t('app', 'Last Login'),
+                    'orderBy' => 'lastLoginDate',
+                    'defaultDir' => 'desc',
+                ],
                 [
                     'label' => Craft::t('app', 'Date Created'),
                     'orderBy' => 'elements.dateCreated',
-                    'attribute' => 'dateCreated'
+                    'attribute' => 'dateCreated',
+                    'defaultDir' => 'desc',
                 ],
                 [
                     'label' => Craft::t('app', 'Date Updated'),
                     'orderBy' => 'elements.dateUpdated',
-                    'attribute' => 'dateUpdated'
+                    'attribute' => 'dateUpdated',
+                    'defaultDir' => 'desc',
                 ],
                 [
                     'label' => Craft::t('app', 'ID'),
@@ -328,6 +342,7 @@ class User extends Element implements IdentityInterface
             'fullName' => ['label' => Craft::t('app', 'Full Name')],
             'firstName' => ['label' => Craft::t('app', 'First Name')],
             'lastName' => ['label' => Craft::t('app', 'Last Name')],
+            'groups' => ['label' => Craft::t('app', 'Groups')],
             'preferredLanguage' => ['label' => Craft::t('app', 'Preferred Language')],
             'preferredLocale' => ['label' => Craft::t('app', 'Preferred Locale')],
             'id' => ['label' => Craft::t('app', 'ID')],
@@ -349,6 +364,19 @@ class User extends Element implements IdentityInterface
             'dateCreated',
             'lastLoginDate',
         ];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected static function prepElementQueryForTableAttribute(ElementQueryInterface $elementQuery, string $attribute)
+    {
+        /** @var UserQuery $elementQuery */
+        if ($attribute === 'groups') {
+            $elementQuery->withGroups();
+        } else {
+            parent::prepElementQueryForTableAttribute($elementQuery, $attribute);
+        }
     }
 
     /**
@@ -587,6 +615,14 @@ class User extends Element implements IdentityInterface
         ) {
             Craft::$app->getUsers()->unlockUser($this);
         }
+
+        // Convert IDNA ASCII to Unicode
+        if ($this->username) {
+            $this->username = StringHelper::idnToUtf8Email($this->username);
+        }
+        if ($this->email) {
+            $this->email = StringHelper::idnToUtf8Email($this->email);
+        }
     }
 
     /**
@@ -666,11 +702,14 @@ class User extends Element implements IdentityInterface
      */
     protected function defineRules(): array
     {
+        // Normalize emails as IDNA ASCII strings if the Intl extension is available
+        $enableIdn = function_exists('idn_to_ascii') && defined('INTL_IDNA_VARIANT_UTS46');
+
         $rules = parent::defineRules();
         $rules[] = [['lastLoginDate', 'lastInvalidLoginDate', 'lockoutDate', 'lastPasswordChangeDate', 'verificationCodeIssuedDate'], DateTimeValidator::class];
         $rules[] = [['invalidLoginCount', 'photoId'], 'number', 'integerOnly' => true];
         $rules[] = [['username', 'email', 'unverifiedEmail', 'firstName', 'lastName'], 'trim', 'skipOnEmpty' => true];
-        $rules[] = [['email', 'unverifiedEmail'], 'email'];
+        $rules[] = [['email', 'unverifiedEmail'], 'email', 'enableIDN' => $enableIdn];
         $rules[] = [['email', 'password', 'unverifiedEmail'], 'string', 'max' => 255];
         $rules[] = [['username', 'firstName', 'lastName', 'verificationCode'], 'string', 'max' => 100];
         $rules[] = [['username', 'email'], 'required'];
@@ -801,7 +840,7 @@ class User extends Element implements IdentityInterface
             return false;
         }
 
-        list($token, , $userAgent) = $data;
+        [$token, , $userAgent] = $data;
 
         if (!$this->_validateUserAgent($userAgent)) {
             return false;
@@ -824,13 +863,15 @@ class User extends Element implements IdentityInterface
      */
     public function authenticate(string $password): bool
     {
+        $this->authError = null;
+
         // Fire a 'beforeAuthenticate' event
         $event = new AuthenticateUserEvent([
             'password' => $password,
         ]);
         $this->trigger(self::EVENT_BEFORE_AUTHENTICATE, $event);
 
-        if ($event->performAuthentication) {
+        if ($this->authError === null && $event->performAuthentication) {
             // Validate the password
             try {
                 $passwordValid = Craft::$app->getSecurity()->validatePassword($password, $this->password);
@@ -1000,7 +1041,7 @@ class User extends Element implements IdentityInterface
      */
     public function getPhotoUrl(int $size = 100)
     {
-        Craft::$app->getDeprecator()->log('User::getPhotoUrl()', 'User::getPhotoUrl() has been deprecated. Use getPhoto() to access the photo asset (if there is one), and call its getUrl() method to access the photo URL.');
+        Craft::$app->getDeprecator()->log('User::getPhotoUrl()', '`User::getPhotoUrl()` has been deprecated. Use `getPhoto()` to access the photo asset (if there is one), and call its `getUrl()` method to access the photo URL.');
         $photo = $this->getPhoto();
 
         if ($photo) {
@@ -1025,6 +1066,14 @@ class User extends Element implements IdentityInterface
         }
 
         return Craft::$app->getAssetManager()->getPublishedUrl('@app/web/assets/cp/dist', true, 'images/user.svg');
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getHasRoundedThumb(): bool
+    {
+        return true;
     }
 
     /**
@@ -1278,6 +1327,11 @@ class User extends Element implements IdentityInterface
             case 'email':
                 return $this->email ? Html::mailto(Html::encode($this->email)) : '';
 
+            case 'groups':
+                return implode(', ', array_map(function(UserGroup $group) {
+                    return Html::encode(Craft::t('site', $group->name));
+                }, $this->getGroups()));
+
             case 'preferredLanguage':
                 $language = $this->getPreferredLanguage();
                 return $language ? (new Locale($language))->getDisplayName(Craft::$app->language) : '';
@@ -1379,6 +1433,11 @@ class User extends Element implements IdentityInterface
         }
 
         $record->save(false);
+
+        // Make sure that the photo is located in the right place
+        if (!$isNew && $this->photoId) {
+            Craft::$app->getUsers()->relocateUserPhoto($this);
+        }
 
         parent::afterSave($isNew);
 

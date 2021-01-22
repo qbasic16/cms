@@ -56,9 +56,9 @@ class PasswordValidatorTest extends Unit
         $this->passwordValidator->validateAttribute($this->model, 'exampleParam');
 
         if ($mustValidate) {
-            $this->assertArrayNotHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayNotHasKey('exampleParam', $this->model->getErrors());
         } else {
-            $this->assertArrayHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayHasKey('exampleParam', $this->model->getErrors());
         }
     }
 
@@ -77,9 +77,9 @@ class PasswordValidatorTest extends Unit
         $passVal->validateAttribute($this->model, 'exampleParam');
 
         if ($mustValidate) {
-            $this->assertArrayNotHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayNotHasKey('exampleParam', $this->model->getErrors());
         } else {
-            $this->assertArrayHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayHasKey('exampleParam', $this->model->getErrors());
         }
     }
 
@@ -98,24 +98,10 @@ class PasswordValidatorTest extends Unit
         $this->passwordValidator->validateAttribute($this->model, 'exampleParam');
 
         if ($mustValidate) {
-            $this->assertArrayNotHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayNotHasKey('exampleParam', $this->model->getErrors());
         } else {
-            $this->assertArrayHasKey('exampleParam', $this->model->getErrors());
+            self::assertArrayHasKey('exampleParam', $this->model->getErrors());
         }
-    }
-
-    /**
-     * @dataProvider isEmptyDataProvider
-     *
-     * @param $result
-     * @param $input
-     * @param $isEmptyVal
-     */
-    public function testIsEmpty($result, $input, $isEmptyVal)
-    {
-        $this->passwordValidator->isEmpty = $isEmptyVal;
-        $isEmpty = $this->passwordValidator->isEmpty($input);
-        $this->assertSame($result, $isEmpty);
     }
 
     public function testToStringExpectException()
@@ -171,25 +157,6 @@ class PasswordValidatorTest extends Unit
             [true, '      ', '         '],
 
         ];
-    }
-
-    /**
-     * @return array
-     */
-    public function isEmptyDataProvider(): array
-    {
-        return [
-            ['im a test', '', self::class . '::testReturn'],
-        ];
-    }
-
-
-    /**
-     * @return string
-     */
-    public static function testReturn(): string
-    {
-        return 'im a test';
     }
 
     /**

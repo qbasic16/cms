@@ -128,7 +128,7 @@ class Html extends \yii\helpers\Html
      * @return string The modified HTML
      * @since 3.3.0
      */
-    public static function appendToTag(string $tag, string $html, string $ifExists = null): string
+    public static function appendToTag(string $tag, string $html, ?string $ifExists = null): string
     {
         return self::_addToTagInternal($tag, $html, 'htmlEnd', $ifExists);
     }
@@ -144,7 +144,7 @@ class Html extends \yii\helpers\Html
      * @return string The modified HTML
      * @since 3.3.0
      */
-    public static function prependToTag(string $tag, string $html, string $ifExists = null): string
+    public static function prependToTag(string $tag, string $html, ?string $ifExists = null): string
     {
         return self::_addToTagInternal($tag, $html, 'htmlStart', $ifExists);
     }
@@ -162,7 +162,7 @@ class Html extends \yii\helpers\Html
      */
     public static function parseTag(string $tag, int $offset = 0): array
     {
-        list($type, $start) = self::_findTag($tag, $offset);
+        [$type, $start] = self::_findTag($tag, $offset);
         $attributes = static::parseTagAttributes($tag, $start, $attrStart, $attrEnd);
         $end = strpos($tag, '>', $attrEnd) + 1;
         $isVoid = $tag[$end - 2] === '/' || isset(static::$voidElements[$type]);
@@ -251,7 +251,7 @@ class Html extends \yii\helpers\Html
      */
     public static function parseTagAttributes(string $tag, int $offset = 0, int &$start = null, int &$end = null, bool $decode = false): array
     {
-        list($type, $tagStart) = self::_findTag($tag, $offset);
+        [$type, $tagStart] = self::_findTag($tag, $offset);
         $start = $tagStart + strlen($type) + 1;
         $anchor = $start;
         $attributes = [];
@@ -306,6 +306,11 @@ class Html extends \yii\helpers\Html
         $normalized = [];
 
         foreach ($attributes as $name => $value) {
+            if ($value === false || $value === null) {
+                $normalized[$name] = false;
+                continue;
+            }
+
             switch ($name) {
                 case 'class':
                     $normalized[$name] = static::explodeClass($value);
@@ -369,7 +374,7 @@ class Html extends \yii\helpers\Html
             $styles = ArrayHelper::filterEmptyStringsFromArray(preg_split('/\s*;\s*/', $value));
             $normalized = [];
             foreach ($styles as $style) {
-                list($n, $v) = array_pad(preg_split('/\s*:\s*/', $style, 2), 2, '');
+                [$n, $v] = array_pad(preg_split('/\s*:\s*/', $style, 2), 2, '');
                 $normalized[$n] = $v;
             }
             return $normalized;
@@ -388,7 +393,7 @@ class Html extends \yii\helpers\Html
     private static function _findTag(string $html, int $offset = 0): array
     {
         // Find the first HTML tag that isn't a DTD or a comment
-        if (!preg_match('/<(\/?\w+)/', $html, $match, PREG_OFFSET_CAPTURE, $offset) || $match[1][0][0] === '/') {
+        if (!preg_match('/<(\/?[\w\-]+)/', $html, $match, PREG_OFFSET_CAPTURE, $offset) || $match[1][0][0] === '/') {
             throw new InvalidArgumentException('Could not find an HTML tag in string: ' . $html);
         }
 
@@ -404,7 +409,7 @@ class Html extends \yii\helpers\Html
      * @param string|null $ifExists
      * @return string
      */
-    private static function _addToTagInternal(string $tag, string $html, string $position, string $ifExists = null): string
+    private static function _addToTagInternal(string $tag, string $html, string $position, ?string $ifExists = null): string
     {
         $info = static::parseTag($tag);
 
@@ -415,7 +420,7 @@ class Html extends \yii\helpers\Html
 
         if ($ifExists) {
             // See if we have a child of the same type
-            list($type) = self::_findTag($html);
+            [$type] = self::_findTag($html);
             $child = ArrayHelper::firstWhere($info['children'], 'type', $type, true);
 
             if ($child) {
@@ -697,5 +702,46 @@ class Html extends \yii\helpers\Html
         $svg = preg_replace('/<title>.*?<\/title>\s*/is', '', $svg);
         $svg = preg_replace('/<desc>.*?<\/desc>\s*/is', '', $svg);
         return $svg;
+    }
+
+    /**
+     * Generates a base64-encoded [data URL](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs) for the given file path.
+     *
+     * @param string $file The file path
+     * @param string|null $mimeType The file’s MIME type. If `null` then it will be determined automatically.
+     * @return string The data URL
+     * @throws InvalidArgumentException if `$file` is an invalid file path
+     * @since 3.5.13
+     */
+    public static function dataUrl(string $file, ?string $mimeType = null): string
+    {
+        if (!is_file($file)) {
+            throw new InvalidArgumentException("Invalid file path: $file");
+        }
+
+        if ($mimeType === null) {
+            try {
+                $mimeType = FileHelper::getMimeType($file);
+            } catch (\Throwable $e) {
+                Craft::warning("Unable to determine the MIME type for $file: " . $e->getMessage());
+                Craft::$app->getErrorHandler()->logException($e);
+            }
+        }
+
+        return static::dataUrlFromString(file_get_contents($file), $mimeType);
+    }
+
+    /**
+     * Generates a base64-encoded [data URL](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs) based on the given file contents and MIME type.
+     *
+     * @param string $contents The file path
+     * @param string|null $mimeType The file’s MIME type. If `null` then it will be determined automatically.
+     * @return string The data URL
+     * @throws InvalidArgumentException if `$file` is an invalid file path
+     * @since 3.5.13
+     */
+    public static function dataUrlFromString(string $contents, ?string $mimeType = null): string
+    {
+        return 'data:' . ($mimeType ? "$mimeType;" : '') . 'base64,' . base64_encode($contents);
     }
 }

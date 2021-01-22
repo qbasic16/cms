@@ -43,16 +43,15 @@ class InstallController extends Controller
 
     /**
      * @inheritdoc
-     * @throws BadRequestHttpException if Craft is already installed
      */
-    public function init()
+    public function beforeAction($action)
     {
-        parent::init();
-
         // Return a 404 if Craft is already installed
         if (!YII_DEBUG && Craft::$app->getIsInstalled()) {
             throw new BadRequestHttpException('Craft is already installed');
         }
+
+        return parent::beforeAction($action);
     }
 
     /**
@@ -94,7 +93,7 @@ class InstallController extends Controller
         $defaultSiteUrl = InstallHelper::defaultSiteUrl();
         $defaultSiteLanguage = InstallHelper::defaultSiteLanguage();
 
-        $iconsPath = Craft::getAlias('@app/icons');
+        $iconsPath = Craft::getAlias('@appicons');
         $dbIcon = $showDbScreen ? file_get_contents($iconsPath . DIRECTORY_SEPARATOR . 'database.svg') : null;
         $userIcon = file_get_contents($iconsPath . DIRECTORY_SEPARATOR . 'user.svg');
         $worldIcon = file_get_contents($iconsPath . DIRECTORY_SEPARATOR . 'world.svg');
@@ -209,10 +208,11 @@ class InstallController extends Controller
         $this->requirePostRequest();
         $this->requireAcceptsJson();
 
-        $site = new Site();
-        $site->name = $this->request->getBodyParam('name');
-        $site->baseUrl = $this->request->getBodyParam('baseUrl');
-        $site->language = $this->request->getBodyParam('language');
+        $site = new Site([
+            'name' => $this->request->getBodyParam('name'),
+            'baseUrl' => $this->request->getBodyParam('baseUrl'),
+            'language' => $this->request->getBodyParam('language'),
+        ]);
 
         $validates = $site->validate(['name', 'baseUrl', 'language']);
         $errors = $site->getErrors();
@@ -276,7 +276,7 @@ class InstallController extends Controller
         if ($siteUrl[0] !== '@' && $siteUrl[0] !== '$' && !App::isEphemeral()) {
             try {
                 $configService->setDotEnvVar('PRIMARY_SITE_URL', $siteUrl);
-                $siteUrl = '$DEFAULT_SITE_URL';
+                $siteUrl = '$PRIMARY_SITE_URL';
             } catch (Exception $e) {
                 // that's fine, we'll just store the entered URL
             }

@@ -213,7 +213,7 @@ class AssetsController extends Controller
     public function actionSaveAsset()
     {
         if (UploadedFile::getInstanceByName('assets-upload') !== null) {
-            Craft::$app->getDeprecator()->log(__METHOD__, 'Uploading new files via assets/save-asset has been deprecated. Use assets/upload instead.');
+            Craft::$app->getDeprecator()->log(__METHOD__, 'Uploading new files via `assets/save-asset` has been deprecated. Use `assets/upload` instead.');
             return $this->runAction('upload');
         }
 
@@ -314,7 +314,12 @@ class AssetsController extends Controller
                     throw new BadRequestHttpException('The field provided is not an Assets field');
                 }
 
-                $element = $elementId ? Craft::$app->getElements()->getElementById((int)$elementId) : null;
+                if ($elementId) {
+                    $siteId = $this->request->getBodyParam('siteId') ?: null;
+                    $element = Craft::$app->getElements()->getElementById($elementId, null, $siteId);
+                } else {
+                    $element = null;
+                }
                 $folderId = $field->resolveDynamicPathToFolderId($element);
             }
 
@@ -695,7 +700,7 @@ class AssetsController extends Controller
 
         if (!$result) {
             // Get the corrected filename
-            list(, $filename) = Assets::parseFileLocation($asset->newLocation);
+            [, $filename] = Assets::parseFileLocation($asset->newLocation);
 
             return $this->asJson([
                 'conflict' => $asset->getFirstError('newLocation'),
@@ -938,7 +943,7 @@ class AssetsController extends Controller
                 $asset->filename = preg_replace('/(svg)$/i', 'png', $asset->filename);
             }
 
-            list($originalImageWidth, $originalImageHeight) = $imageSize;
+            [$originalImageWidth, $originalImageHeight] = $imageSize;
 
             if ($imageFlipped) {
                 if (!empty($flipData['x'])) {
@@ -950,9 +955,15 @@ class AssetsController extends Controller
                 }
             }
 
+            $generalConfig = Craft::$app->getConfig()->getGeneral();
+            $upscale = $generalConfig->upscaleImages;
+            $generalConfig->upscaleImages = true;
+
             if ($zoom !== 1.0) {
                 $image->scaleToFit($originalImageWidth * $zoom, $originalImageHeight * $zoom);
             }
+
+            $generalConfig->upscaleImages = $upscale;
 
             if ($imageRotated) {
                 $image->rotate($imageRotation + $viewportRotation);
@@ -1054,7 +1065,10 @@ class AssetsController extends Controller
         if (count($assets) === 1) {
             $asset = reset($assets);
             return $this->response
-                ->sendStreamAsFile($asset->stream, $asset->filename);
+                ->sendStreamAsFile($asset->getStream(), $asset->filename, [
+                    'fileSize' => $asset->size,
+                    'mimeType' => $asset->getMimeType(),
+                ]);
         }
 
         // Otherwise create a zip of all the selected assets
@@ -1066,10 +1080,10 @@ class AssetsController extends Controller
         }
 
         App::maxPowerCaptain();
+
         foreach ($assets as $asset) {
-            $localPath = $asset->getCopyOfFile();
-            $volume = $asset->getVolume();
-            $zip->addFile($localPath, $volume->name . '/' . $asset->getPath());
+            $path = $asset->getVolume()->name . '/' . $asset->getPath();
+            $zip->addFromString($path, $asset->getContents());
         }
 
         $zip->close();
@@ -1089,7 +1103,7 @@ class AssetsController extends Controller
      */
     public function actionGenerateThumb(string $uid, int $width, int $height): Response
     {
-        Craft::$app->getDeprecator()->log(__METHOD__, 'The assets/generate-thumb action has been deprecated. Use assets/thumb instead.');
+        Craft::$app->getDeprecator()->log(__METHOD__, 'The `assets/generate-thumb` action has been deprecated. Use `assets/thumb` instead.');
         return $this->actionThumb($uid, $width, $height);
     }
 
@@ -1223,7 +1237,7 @@ class AssetsController extends Controller
     {
         $statusCode = $e instanceof HttpException && $e->statusCode ? $e->statusCode : 500;
         return $this->response
-            ->sendFile(Craft::getAlias('@app/icons/broken-image.svg'), 'nope.svg', [
+            ->sendFile(Craft::getAlias('@appicons/broken-image.svg'), 'nope.svg', [
                 'mimeType' => 'image/svg+xml',
                 'inline' => true,
             ])

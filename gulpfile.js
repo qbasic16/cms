@@ -27,6 +27,7 @@ const atAssetPath = `${cpAssetsPath}/admintable`;
 
 const cpSassGlob = [
     `${cpAssetsPath}/**/src/**/*.scss`,
+    `!${cpAssetsPath}/cp/src/craftui/**/*.scss`,
     `!${graphiqlAssetPath}/**/*.scss`,
     `!${psAssetPath}/**/*.scss`,
     `!${atAssetPath}/**/*.scss`,
@@ -231,10 +232,8 @@ gulp.task('deps', ['jqui', 'graphiql', 'vue', 'static-deps'], function() {
     jsDeps.forEach(function(dep) {
         streams.push(
             gulp.src(dep.srcGlob)
-                //.pipe(gulp.dest(dest))
                 .pipe(sourcemaps.init())
                 .pipe(uglify())
-                //.pipe(rename({ suffix: '.min' }))
                 .pipe(sourcemaps.write('./'))
                 .pipe(gulp.dest(dep.dest))
         );
@@ -251,3 +250,5 @@ gulp.task('deps', ['jqui', 'graphiql', 'vue', 'static-deps'], function() {
 
     return es.merge(streams);
 });
+
+gulp.task('default', ['cp', 'deps']);

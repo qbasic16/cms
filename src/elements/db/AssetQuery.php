@@ -299,7 +299,7 @@ class AssetQuery extends ElementQuery
      */
     public function source($value)
     {
-        Craft::$app->getDeprecator()->log('AssetQuery::source()', 'The “source” asset query param has been deprecated. Use “volume” instead.');
+        Craft::$app->getDeprecator()->log('AssetQuery::source()', 'The `source` asset query param has been deprecated. Use `volume` instead.');
 
         return $this->volume($value);
     }
@@ -352,7 +352,7 @@ class AssetQuery extends ElementQuery
      */
     public function sourceId($value)
     {
-        Craft::$app->getDeprecator()->log('AssetQuery::sourceId()', 'The “sourceId” asset query param has been deprecated. Use “volumeId” instead.');
+        Craft::$app->getDeprecator()->log('AssetQuery::sourceId()', 'The `sourceId` asset query param has been deprecated. Use `volumeId` instead.');
 
         return $this->volumeId($value);
     }
@@ -793,12 +793,12 @@ class AssetQuery extends ElementQuery
     /**
      * @inheritdoc
      */
-    public function populate($rows)
+    public function afterPopulate(array $elements): array
     {
-        $elements = parent::populate($rows);
+        $elements = parent::afterPopulate($elements);
 
         // Eager-load transforms?
-        if ($this->withTransforms) {
+        if ($this->withTransforms && !$this->asArray) {
             $transforms = $this->withTransforms;
             if (!is_array($transforms)) {
                 $transforms = is_string($transforms) ? StringHelper::split($transforms) : [$transforms];
@@ -821,6 +821,7 @@ class AssetQuery extends ElementQuery
         }
 
         $this->joinElementTable('assets');
+        $this->subQuery->innerJoin(['volumeFolders' => Table::VOLUMEFOLDERS], '[[volumeFolders.id]] = [[assets.folderId]]');
         $this->query->innerJoin(['volumeFolders' => Table::VOLUMEFOLDERS], '[[volumeFolders.id]] = [[assets.folderId]]');
 
         $this->query->select([

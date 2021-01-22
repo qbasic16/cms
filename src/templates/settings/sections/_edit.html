@@ -1,14 +1,32 @@
-{% extends "_layouts/cp" %}
+{% extends 'settings/sections/_layout' %}
+{% set selectedTab = 'settings' %}
 {% set fullPageForm = true %}
+{% set formActions = [
+    {
+        label: 'Save and continue editing'|t('app'),
+        redirect: 'settings/sections/{id}'|hash,
+        shortcut: true,
+        retainScroll: true,
+    },
+] %}
 
 {% import "_includes/forms" as forms %}
 
 {% set headlessMode = craft.app.config.general.headlessMode %}
 
 
+{% block submitButton %}
+    {% if section.id %}
+        {{ parent() }}
+    {% else %}
+        <button type="submit" class="btn submit">{{ 'Save and edit entry types'|t('app') }}</button>
+    {% endif %}
+{% endblock %}
+
+
 {% block content %}
     {{ actionInput('sections/save-section') }}
-    {{ redirectInput('settings/sections') }}
+    {{ redirectInput(section.id ? 'settings/sections' : "settings/sections/{id}/entrytypes") }}
 
     {% if section.id %}{{ hiddenInput('sectionId', section.id) }}{% endif %}
 

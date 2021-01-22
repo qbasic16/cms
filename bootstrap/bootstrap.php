@@ -157,7 +157,7 @@ if (!defined('CRAFT_LOG_PHP_ERRORS') || CRAFT_LOG_PHP_ERRORS) {
     ini_set('error_log', $storagePath . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'phperrors.log');
 }
 
-error_reporting(E_ALL);
+error_reporting(E_ALL & ~E_DEPRECATED);
 
 // Load the general config
 // -----------------------------------------------------------------------------
@@ -206,6 +206,7 @@ require $srcPath . DIRECTORY_SEPARATOR . 'Craft.php';
 Craft::setAlias('@root', $rootPath);
 Craft::setAlias('@lib', $libPath);
 Craft::setAlias('@craft', $srcPath);
+Craft::setAlias('@appicons', $srcPath . DIRECTORY_SEPARATOR . 'icons');
 Craft::setAlias('@config', $configPath);
 Craft::setAlias('@contentMigrations', $contentMigrationsPath);
 Craft::setAlias('@storage', $storagePath);

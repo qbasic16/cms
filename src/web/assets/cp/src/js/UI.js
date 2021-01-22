@@ -53,18 +53,20 @@ Craft.ui =
 
             if (config.type === 'password') {
                 return $('<div class="passwordwrapper"/>').append($input);
-            }
-            else {
+            } else {
                 return $input;
             }
         },
 
         createTextField: function(config) {
+            if (!config.id) {
+                config.id = 'text' + Math.floor(Math.random() * 1000000000);
+            }
             return this.createField(this.createTextInput(config), config);
         },
 
         createCopyTextInput: function(config) {
-            let id = config.id || `copytext-${Math.floor(Math.random() * 1000000000)}`;
+            let id = config.id || 'copytext' + Math.floor(Math.random() * 1000000000);
             let buttonId = config.buttonId || `${id}-btn`;
 
             let $container = $('<div/>', {
@@ -95,6 +97,9 @@ Craft.ui =
         },
 
         createCopyTextField: function(config) {
+            if (!config.id) {
+                config.id = 'copytext' + Math.floor(Math.random() * 1000000000);
+            }
             return this.createField(this.createCopyTextInput(config), config);
         },
 
@@ -147,6 +152,9 @@ Craft.ui =
         },
 
         createTextareaField: function(config) {
+            if (!config.id) {
+                config.id = 'textarea' + Math.floor(Math.random() * 1000000000);
+            }
             return this.createField(this.createTextarea(config), config);
         },
 
@@ -210,7 +218,7 @@ Craft.ui =
                         'value': option.value,
                         'selected': (option.value == config.value),
                         'disabled': typeof option.disabled !== 'undefined' ? option.disabled : false,
-                        'html':  option.label
+                        'html': option.label
                     }).appendTo($optgroup || $select);
                 }
             }
@@ -224,6 +232,9 @@ Craft.ui =
         },
 
         createSelectField: function(config) {
+            if (!config.id) {
+                config.id = 'select' + Math.floor(Math.random() * 1000000000);
+            }
             return this.createField(this.createSelect(config), config);
         },
 
@@ -268,8 +279,7 @@ Craft.ui =
                     $input[0],
                     $label[0]
                 ]);
-            }
-            else {
+            } else {
                 return $([
                     $input[0],
                     $label[0]
@@ -278,8 +288,12 @@ Craft.ui =
         },
 
         createCheckboxField: function(config) {
+            if (!config.id) {
+                config.id = 'checkbox' + Math.floor(Math.random() * 1000000000);
+            }
+
             var $field = $('<div class="field checkboxfield"/>', {
-                id: (config.id ? config.id + '-field' : null)
+                id: `${config.id}-field`,
             });
 
             if (config.first) {
@@ -352,6 +366,9 @@ Craft.ui =
         },
 
         createCheckboxSelectField: function(config) {
+            if (!config.id) {
+                config.id = 'checkboxselect' + Math.floor(Math.random() * 1000000000);
+            }
             return this.createField(this.createCheckboxSelect(config), config);
         },
 
@@ -414,6 +431,9 @@ Craft.ui =
         },
 
         createLightswitchField: function(config) {
+            if (!config.id) {
+                config.id = 'lightswitch' + Math.floor(Math.random() * 1000000000);
+            }
             return this.createField(this.createLightswitch(config), config)
                 .addClass('lightswitch-field');
         },
@@ -456,13 +476,16 @@ Craft.ui =
         },
 
         createColorField: function(config) {
+            if (!config.id) {
+                config.id = 'color' + Math.floor(Math.random() * 1000000000);
+            }
             return this.createField(this.createColorInput(config), config);
         },
 
         createDateInput: function(config) {
-            var id = (config.id || 'date' + Math.floor(Math.random() * 1000000000))+'-date';
+            var id = (config.id || 'date' + Math.floor(Math.random() * 1000000000)) + '-date';
             var name = config.name || null;
-            var inputName = name ? name+'[date]' : null;
+            var inputName = name ? name + '[date]' : null;
             var value = config.value && typeof config.value.getMonth === 'function' ? config.value : null;
             var formattedValue = value ? Craft.formatDate(value) : null;
             var autofocus = config.autofocus && Garnish.isMobileBrowser(true);
@@ -487,7 +510,7 @@ Craft.ui =
             if (name) {
                 $('<input/>', {
                     type: 'hidden',
-                    name: name+'[timezone]',
+                    name: name + '[timezone]',
                     val: Craft.timezone
                 }).appendTo($container);
             }
@@ -500,6 +523,9 @@ Craft.ui =
         },
 
         createDateField: function(config) {
+            if (!config.id) {
+                config.id = 'date' + Math.floor(Math.random() * 1000000000);
+            }
             return this.createField(this.createDateInput(config), config);
         },
 
@@ -520,7 +546,7 @@ Craft.ui =
                 ],
                 onChange: $.noop,
                 selected: null,
-                startDate:null,
+                startDate: null,
                 endDate: null,
             }, config);
 
@@ -658,16 +684,16 @@ Craft.ui =
 
             $dateInputs.on('change', function() {
                 // Do the start & end dates match one of our options?
-                var startDate = $startDate.datepicker('getDate');
-                var endDate = $endDate.datepicker('getDate');
-                var startTime = startDate ? startDate.getTime() : null;
-                var endTime = endDate ? endDate.getTime() : null;
+                let startDate = $startDate.datepicker('getDate');
+                let endDate = $endDate.datepicker('getDate');
+                let startTime = startDate ? startDate.getTime() : null;
+                let endTime = endDate ? endDate.getTime() : null;
 
-                var $options = $ul.find('a');
-                var $option;
-                var foundOption = false;
+                let $options = $ul.find('a');
+                let $option;
+                let foundOption = false;
 
-                for (var i = 0; i < $options.length; i++) {
+                for (let i = 0; i < $options.length; i++) {
                     $option = $options.eq(i);
                     if (
                         startTime === ($option.data('startTime') || null) &&
@@ -704,13 +730,17 @@ Craft.ui =
                 $endDate.datepicker('hide');
             });
 
-            var btnClasses = 'btn menubtn';
+            let btnClasses = 'btn menubtn';
             if (config.class) {
                 btnClasses = btnClasses + ' ' + config.class;
             }
 
-            var $btn = $('<div class="'+btnClasses+'" data-icon="date"/>')
-                .text(Craft.t('app', 'All'));
+            let $btn = $('<button/>', {
+                type: 'button',
+                class: btnClasses,
+                'data-icon': 'date',
+                text: Craft.t('app', 'All'),
+            });
 
             new Garnish.MenuBtn($btn, menu);
 
@@ -734,9 +764,9 @@ Craft.ui =
         },
 
         createTimeInput: function(config) {
-            var id = (config.id || 'time' + Math.floor(Math.random() * 1000000000))+'-time';
+            var id = (config.id || 'time' + Math.floor(Math.random() * 1000000000)) + '-time';
             var name = config.name || null;
-            var inputName = name ? name+'[time]' : null;
+            var inputName = name ? name + '[time]' : null;
             var value = config.value && typeof config.value.getMonth === 'function' ? config.value : null;
             var autofocus = config.autofocus && Garnish.isMobileBrowser(true);
             var disabled = config.disabled || false;
@@ -759,20 +789,23 @@ Craft.ui =
             if (name) {
                 $('<input/>', {
                     type: 'hidden',
-                    name: name+'[timezone]',
+                    name: name + '[timezone]',
                     val: Craft.timezone
                 }).appendTo($container);
             }
 
             $input.timepicker(Craft.timepickerOptions);
             if (value) {
-                $input.timepicker('setTime', value.getHours()*3600 + value.getMinutes()*60 + value.getSeconds());
+                $input.timepicker('setTime', value.getHours() * 3600 + value.getMinutes() * 60 + value.getSeconds());
             }
 
             return $container;
         },
 
         createTimeField: function(config) {
+            if (!config.id) {
+                config.id = 'time' + Math.floor(Math.random() * 1000000000);
+            }
             return this.createField(this.createTimeInput(config), config);
         },
 

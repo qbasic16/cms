@@ -12,6 +12,7 @@ use craft\base\MissingComponentInterface;
 use craft\base\PluginInterface;
 use craft\elements\Asset;
 use craft\elements\db\ElementQuery;
+use craft\errors\AssetException;
 use craft\helpers\App;
 use craft\helpers\ArrayHelper;
 use craft\helpers\DateTimeHelper;
@@ -46,6 +47,7 @@ use craft\web\twig\tokenparsers\RequireGuestTokenParser;
 use craft\web\twig\tokenparsers\RequireLoginTokenParser;
 use craft\web\twig\tokenparsers\RequirePermissionTokenParser;
 use craft\web\twig\tokenparsers\SwitchTokenParser;
+use craft\web\twig\tokenparsers\TagTokenParser;
 use craft\web\twig\variables\CraftVariable;
 use craft\web\View;
 use DateInterval;
@@ -118,18 +120,19 @@ class Extension extends AbstractExtension implements GlobalsInterface
             new ExitTokenParser(),
             new HeaderTokenParser(),
             new HookTokenParser(),
-            new RegisterResourceTokenParser('css', 'registerCss', [
+            new RegisterResourceTokenParser('css', TemplateHelper::class . '::css', [
                 'allowTagPair' => true,
                 'allowOptions' => true,
             ]),
-            new RegisterResourceTokenParser('html', 'registerHtml', [
+            new RegisterResourceTokenParser('html', 'Craft::$app->getView()->registerHtml', [
                 'allowTagPair' => true,
                 'allowPosition' => true,
             ]),
-            new RegisterResourceTokenParser('js', 'registerJs', [
+            new RegisterResourceTokenParser('js', TemplateHelper::class . '::js', [
                 'allowTagPair' => true,
                 'allowPosition' => true,
                 'allowRuntimePosition' => true,
+                'allowOptions' => true,
             ]),
             new NamespaceTokenParser(),
             new NavTokenParser(),
@@ -141,58 +144,59 @@ class Extension extends AbstractExtension implements GlobalsInterface
             new RequireGuestTokenParser(),
             new RequirePermissionTokenParser(),
             new SwitchTokenParser(),
+            new TagTokenParser(),
 
             // Deprecated tags
-            new RegisterResourceTokenParser('includeCss', 'registerCss', [
+            new RegisterResourceTokenParser('includeCss', 'Craft::$app->getView()->registerCss', [
                 'allowTagPair' => true,
                 'allowOptions' => true,
                 'newCode' => '{% css %}',
             ]),
-            new RegisterResourceTokenParser('includeHiResCss', 'registerHiResCss', [
+            new RegisterResourceTokenParser('includeHiResCss', 'Craft::$app->getView()->registerHiResCss', [
                 'allowTagPair' => true,
                 'allowOptions' => true,
                 'newCode' => '{% css %}',
             ]),
-            new RegisterResourceTokenParser('includeCssFile', 'registerCssFile', [
+            new RegisterResourceTokenParser('includeCssFile', 'Craft::$app->getView()->registerCssFile', [
                 'allowOptions' => true,
-                'newCode' => '{% do view.registerCssFile("/url/to/file.css") %}',
+                'newCode' => '{% css "/url/to/file.css" %}',
             ]),
-            new RegisterResourceTokenParser('includeJs', 'registerJs', [
+            new RegisterResourceTokenParser('includeJs', 'Craft::$app->getView()->registerJs', [
                 'allowTagPair' => true,
                 'allowPosition' => true,
                 'allowRuntimePosition' => true,
                 'newCode' => '{% js %}',
             ]),
-            new RegisterResourceTokenParser('includeJsFile', 'registerJsFile', [
+            new RegisterResourceTokenParser('includeJsFile', 'Craft::$app->getView()->registerJsFile', [
                 'allowPosition' => true,
                 'allowOptions' => true,
-                'newCode' => '{% do view.registerJsFile("/url/to/file.js") %}',
+                'newCode' => '{% js "/url/to/file.js" %}',
             ]),
 
-            new RegisterResourceTokenParser('includecss', 'registerCss', [
+            new RegisterResourceTokenParser('includecss', 'Craft::$app->getView()->registerCss', [
                 'allowTagPair' => true,
                 'allowOptions' => true,
                 'newCode' => '{% css %}',
             ]),
-            new RegisterResourceTokenParser('includehirescss', 'registerHiResCss', [
+            new RegisterResourceTokenParser('includehirescss', 'Craft::$app->getView()->registerHiResCss', [
                 'allowTagPair' => true,
                 'allowOptions' => true,
                 'newCode' => '{% css %}',
             ]),
-            new RegisterResourceTokenParser('includecssfile', 'registerCssFile', [
+            new RegisterResourceTokenParser('includecssfile', 'Craft::$app->getView()->registerCssFile', [
                 'allowOptions' => true,
-                'newCode' => '{% do view.registerCssFile("/url/to/file.css") %}',
+                'newCode' => '{% css "/url/to/file.css" %}',
             ]),
-            new RegisterResourceTokenParser('includejs', 'registerJs', [
+            new RegisterResourceTokenParser('includejs', 'Craft::$app->getView()->registerJs', [
                 'allowTagPair' => true,
                 'allowPosition' => true,
                 'allowRuntimePosition' => true,
                 'newCode' => '{% js %}',
             ]),
-            new RegisterResourceTokenParser('includejsfile', 'registerJsFile', [
+            new RegisterResourceTokenParser('includejsfile', 'Craft::$app->getView()->registerJsFile', [
                 'allowPosition' => true,
                 'allowOptions' => true,
-                'newCode' => '{% do view.registerJsFile("/url/to/file.js") %}',
+                'newCode' => '{% js "/url/to/file.js" %}',
             ]),
         ];
     }
@@ -222,7 +226,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
             new TwigFilter('explodeClass', [Html::class, 'explodeClass']),
             new TwigFilter('explodeStyle', [Html::class, 'explodeStyle']),
             new TwigFilter('filesize', [$formatter, 'asShortSize']),
-            new TwigFilter('filter', [$this, 'filterFilter']),
+            new TwigFilter('filter', [$this, 'filterFilter'], ['needs_environment' => true]),
             new TwigFilter('filterByValue', [ArrayHelper::class, 'where'], ['deprecated' => '3.5.0', 'alternative' => 'where']),
             new TwigFilter('group', [$this, 'groupFilter']),
             new TwigFilter('hash', [$security, 'hashData']),
@@ -258,6 +262,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
             new TwigFilter('time', [$this, 'timeFilter'], ['needs_environment' => true]),
             new TwigFilter('timestamp', [$formatter, 'asTimestamp']),
             new TwigFilter('translate', [$this, 'translateFilter']),
+            new TwigFilter('truncate', [$this, 'truncateFilter']),
             new TwigFilter('t', [$this, 'translateFilter']),
             new TwigFilter('ucfirst', [$this, 'ucfirstFilter']),
             new TwigFilter('ucwords', [$this, 'ucwordsFilter'], ['needs_environment' => true]),
@@ -271,7 +276,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
     }
 
     /**
-     * {@inheritdoc}
+     * @inheritdoc
      */
     public function getTests()
     {
@@ -321,6 +326,26 @@ class Extension extends AbstractExtension implements GlobalsInterface
     }
 
     /**
+     * Truncates the string to a given length, while ensuring that it does not split words.
+     *
+     * @param string $string The string to truncate
+     * @param int $length The maximum number of characters for the truncated string
+     * @param string $suffix The string that should be appended to `$string`, if it must be truncated
+     * @param bool $splitSingleWord Whether to split up `$string` if it only contains one word
+     * @return string The truncated string
+     * @since 3.5.10
+     */
+    public function truncateFilter(string $string, int $length, string $suffix = '…', bool $splitSingleWord = true): string
+    {
+        // Override default behavior where the substring would be returned in this case
+        if ($string === '' || $length <= 0) {
+            return $string;
+        }
+
+        return StringHelper::safeTruncate($string, $length, $suffix, $splitSingleWord);
+    }
+
+    /**
      * Uppercases the first character of a multibyte string.
      *
      * @param mixed $string The multibyte string.
@@ -340,7 +365,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
      */
     public function ucwordsFilter(TwigEnvironment $env, string $string): string
     {
-        Craft::$app->getDeprecator()->log('ucwords', 'The |ucwords filter has been deprecated. Use |title instead.');
+        Craft::$app->getDeprecator()->log('ucwords', 'The `|ucwords` filter has been deprecated. Use `|title` instead.');
         if (($charset = $env->getCharset()) !== null) {
             return mb_convert_case($string, MB_CASE_TITLE, $charset);
         }
@@ -459,14 +484,22 @@ class Extension extends AbstractExtension implements GlobalsInterface
      * Returns an array without a certain key.
      *
      * @param mixed $arr
-     * @param string $key
+     * @param string|string[] $key
      * @return array
      * @since 3.2.0
      */
-    public function withoutKeyFilter($arr, string $key): array
+    public function withoutKeyFilter($arr, $key): array
     {
         $arr = (array)$arr;
-        ArrayHelper::remove($arr, $key);
+
+        if (!is_array($key)) {
+            $key = [$key];
+        }
+
+        foreach ($key as $k) {
+            ArrayHelper::remove($arr, $k);
+        }
+
         return $arr;
     }
 
@@ -778,17 +811,23 @@ class Extension extends AbstractExtension implements GlobalsInterface
     /**
      * Filters an array.
      *
+     * @param TwigEnvironment $env
      * @param array|\Traversable $arr
      * @param callable|null $arrow
      * @return array
      */
-    public function filterFilter($arr, $arrow = null)
+    public function filterFilter(TwigEnvironment $env, $arr, $arrow = null)
     {
         if ($arrow === null) {
             return array_filter($arr);
         }
 
-        $filtered = twig_array_filter($arr, $arrow);
+        // todo: remove this version check when we drop support for Twig < 2.13.1
+        if (version_compare(TwigEnvironment::VERSION, '2.13.1', '<')) {
+            $filtered = twig_array_filter($arr, $arrow);
+        } else {
+            $filtered = twig_array_filter($env, $arr, $arrow);
+        }
 
         if (is_array($filtered)) {
             return $filtered;
@@ -808,7 +847,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
     public function groupFilter($arr, $arrow): array
     {
         if ($arr instanceof ElementQuery) {
-            Craft::$app->getDeprecator()->log('ElementQuery::getIterator()', 'Looping through element queries directly has been deprecated. Use the all() function to fetch the query results before looping over them.');
+            Craft::$app->getDeprecator()->log('ElementQuery::getIterator()', 'Looping through element queries directly has been deprecated. Use the `all()` function to fetch the query results before looping over them.');
             $arr = $arr->all();
         }
 
@@ -954,8 +993,10 @@ class Extension extends AbstractExtension implements GlobalsInterface
             new TwigFunction('className', 'get_class'),
             new TwigFunction('clone', [$this, 'cloneFunction']),
             new TwigFunction('combine', 'array_combine'),
+            new TwigFunction('configure', [Craft::class, 'configure']),
             new TwigFunction('cpUrl', [UrlHelper::class, 'cpUrl']),
             new TwigFunction('create', [Craft::class, 'createObject']),
+            new TwigFunction('dataUrl', [$this, 'dataUrlFunction']),
             new TwigFunction('expression', [$this, 'expressionFunction']),
             new TwigFunction('floor', 'floor'),
             new TwigFunction('getenv', [App::class, 'env']),
@@ -976,9 +1017,11 @@ class Extension extends AbstractExtension implements GlobalsInterface
             new TwigFunction('csrfInput', [Html::class, 'csrfInput'], ['is_safe' => ['html']]),
             new TwigFunction('hiddenInput', [Html::class, 'hiddenInput'], ['is_safe' => ['html']]),
             new TwigFunction('input', [Html::class, 'input'], ['is_safe' => ['html']]),
+            new TwigFunction('ol', [Html::class, 'ol'], ['is_safe' => ['html']]),
             new TwigFunction('redirectInput', [Html::class, 'redirectInput'], ['is_safe' => ['html']]),
             new TwigFunction('svg', [$this, 'svgFunction'], ['is_safe' => ['html']]),
             new TwigFunction('tag', [$this, 'tagFunction'], ['is_safe' => ['html']]),
+            new TwigFunction('ul', [Html::class, 'ul'], ['is_safe' => ['html']]),
 
             // DOM event functions
             new TwigFunction('head', [$this->view, 'head']),
@@ -1001,6 +1044,25 @@ class Extension extends AbstractExtension implements GlobalsInterface
     public function cloneFunction($var)
     {
         return clone $var;
+    }
+
+    /**
+     * Generates a base64-encoded [data URL](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs) for the given file path or asset.
+     *
+     * @param string|Asset $file A file path on an asset
+     * @param string|null $mimeType The file’s MIME type. If `null` then it will be determined automatically.
+     * @return string The data URL
+     * @throws InvalidConfigException if `$file` is an invalid file path, or an asset with a missing/invalid volume ID
+     * @throws AssetException if a stream could not be created for the asset
+     * @since 3.5.13
+     */
+    public function dataUrlFunction($file, string $mimeType = null): string
+    {
+        if ($file instanceof Asset) {
+            return $file->getDataUrl();
+        }
+
+        return Html::dataUrl(Craft::getAlias($file), $mimeType);
     }
 
     /**
@@ -1053,7 +1115,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
      */
     public function roundFunction($value, int $precision = 0, int $mode = PHP_ROUND_HALF_UP)
     {
-        Craft::$app->getDeprecator()->log('round()', 'The round() function has been deprecated. Use Twig’s |round filter instead.');
+        Craft::$app->getDeprecator()->log('round()', 'The `round()` function has been deprecated. Use Twig’s `|round` filter instead.');
 
         return round($value, $precision, $mode);
     }
@@ -1164,7 +1226,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
         }
 
         if ($class !== null) {
-            Craft::$app->getDeprecator()->log('svg()-class', 'The `class` argument of the svg() Twig function has been deprecated. The |attr filter should be used instead.');
+            Craft::$app->getDeprecator()->log('svg()-class', 'The `class` argument of the `svg()` Twig function has been deprecated. The `|attr` filter should be used instead.');
             try {
                 $svg = Html::modifyTagAttributes($svg, [
                     'class' => $class,
@@ -1207,6 +1269,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
         $isInstalled = Craft::$app->getIsInstalled();
         $request = Craft::$app->getRequest();
         $generalConfig = Craft::$app->getConfig()->getGeneral();
+        $setPasswordRequestPath = $generalConfig->getSetPasswordRequestPath();
 
         $globals = [
             'view' => $this->view,
@@ -1229,6 +1292,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
             'isInstalled' => $isInstalled,
             'loginUrl' => UrlHelper::siteUrl($generalConfig->getLoginPath()),
             'logoutUrl' => UrlHelper::siteUrl($generalConfig->getLogoutPath()),
+            'setPasswordUrl' => $setPasswordRequestPath !== null ? UrlHelper::siteUrl($setPasswordRequestPath) : null,
             'now' => new DateTime(null, new \DateTimeZone(Craft::$app->getTimeZone()))
         ];
 
@@ -1255,7 +1319,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
             /** @noinspection PhpUnhandledExceptionInspection */
             $site = Craft::$app->getSites()->getCurrentSite();
             $globals['currentSite'] = $site;
-            $globals['siteName'] = $site->name;
+            $globals['siteName'] = Craft::t('site', $site->getName());
             $globals['siteUrl'] = $site->getBaseUrl();
 
             // Global sets (site templates only)
@@ -1283,7 +1347,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
      */
     public function getCsrfInput(): string
     {
-        Craft::$app->getDeprecator()->log('getCsrfInput', 'getCsrfInput() has been deprecated. Use csrfInput() instead.');
+        Craft::$app->getDeprecator()->log('getCsrfInput', '`getCsrfInput()` has been deprecated. Use `csrfInput()` instead.');
         return Html::csrfInput();
     }
 
@@ -1293,7 +1357,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
      */
     public function getHeadHtml(): string
     {
-        Craft::$app->getDeprecator()->log('getHeadHtml', 'getHeadHtml() has been deprecated. Use head() instead.');
+        Craft::$app->getDeprecator()->log('getHeadHtml', '`getHeadHtml()` has been deprecated. Use `head()` instead.');
 
         ob_start();
         ob_implicit_flush(false);
@@ -1308,7 +1372,7 @@ class Extension extends AbstractExtension implements GlobalsInterface
      */
     public function getFootHtml(): string
     {
-        Craft::$app->getDeprecator()->log('getFootHtml', 'getFootHtml() has been deprecated. Use endBody() instead.');
+        Craft::$app->getDeprecator()->log('getFootHtml', '`getFootHtml()` has been deprecated. Use `endBody()` instead.');
 
         ob_start();
         ob_implicit_flush(false);

@@ -14,7 +14,6 @@ use Codeception\Stub;
 use Codeception\TestInterface;
 use craft\base\ElementInterface;
 use craft\config\DbConfig;
-use craft\db\Connection;
 use craft\db\Query;
 use craft\db\Table;
 use craft\elements\db\ElementQuery;
@@ -38,7 +37,6 @@ use yii\base\Exception as YiiBaseException;
 use yii\base\InvalidArgumentException;
 use yii\base\InvalidConfigException;
 use yii\base\Module;
-use yii\db\Exception;
 
 /**
  * Craft module for codeception
@@ -162,13 +160,9 @@ class Craft extends Yii2
             return;
         }
 
-        $this->resetProjectConfig();
-
-        $db = \Craft::createObject(
-            App::dbConfig(self::createDbConfig())
-        );
-
-        \Craft::$app->set('db', $db);
+        if ($this->_getConfig('dbSetup')['setupCraft']) {
+            $this->resetProjectConfig();
+        }
     }
 
     /**
@@ -228,14 +222,6 @@ class Craft extends Yii2
 
             App::maxPowerCaptain();
 
-            $dbConnection = \Craft::createObject(App::dbConfig(self::createDbConfig()));
-
-            if (!$dbConnection instanceof Connection) {
-                throw new Exception('Unable to establish a DB connection to setup the DB');
-            }
-
-            \Craft::$app->set('db', $dbConnection);
-
             $dbSetupConfig = $this->_getConfig('dbSetup');
 
             // Setup the project config from the passed file.
@@ -245,12 +231,12 @@ class Craft extends Yii2
 
             // Get rid of everything.
             if (isset($dbSetupConfig['clean']) && $dbSetupConfig['clean'] === true) {
-                TestSetup::cleanseDb($dbConnection);
+                TestSetup::cleanseDb(\Craft::$app->getDb());
             }
 
             // Install the db from install.php
             if (isset($dbSetupConfig['setupCraft']) && $dbSetupConfig['setupCraft'] === true) {
-                TestSetup::setupCraftDb($dbConnection);
+                TestSetup::setupCraftDb(\Craft::$app->getDb());
             }
 
             // Ready to rock.
@@ -384,6 +370,28 @@ class Craft extends Yii2
     public function saveElement(ElementInterface $element, bool $failHard = true): bool
     {
         if (!\Craft::$app->getElements()->saveElement($element)) {
+            if ($failHard) {
+                throw new InvalidArgumentException(
+                    implode(', ', $element->getErrorSummary(true))
+                );
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param ElementInterface $element
+     * @param bool $hardDelete
+     * @param bool $failHard
+     * @return bool
+     * @throws Throwable
+     */
+    public function deleteElement(ElementInterface $element, bool $hardDelete = true, bool $failHard = true): bool
+    {
+        if (!\Craft::$app->getElements()->deleteElement($element, $hardDelete)) {
             if ($failHard) {
                 throw new InvalidArgumentException(
                     implode(', ', $element->getErrorSummary(true))

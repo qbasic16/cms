@@ -3,6 +3,8 @@
 namespace craft\services;
 
 use Craft;
+use craft\base\Field;
+use craft\base\MemoizableArray;
 use craft\base\VolumeInterface;
 use craft\db\Query;
 use craft\db\Table;
@@ -89,7 +91,8 @@ class Volumes extends Component
     const CONFIG_VOLUME_KEY = 'volumes';
 
     /**
-     * @var VolumeInterface[]
+     * @var MemoizableArray|null
+     * @see _volumes()
      */
     private $_volumes;
 
@@ -97,6 +100,18 @@ class Volumes extends Component
      * @var array|null Volume setting overrides
      */
     private $_overrides;
+
+    /**
+     * Serializer
+     *
+     * @since 3.5.14
+     */
+    public function __serialize()
+    {
+        $vars = get_object_vars($this);
+        unset($vars['_volumes']);
+        return $vars;
+    }
 
     // Volumes
     // -------------------------------------------------------------------------
@@ -155,7 +170,7 @@ class Volumes extends Component
         $userSession = Craft::$app->getUser();
         return ArrayHelper::where($this->getAllVolumes(), function(VolumeInterface $volume) use ($userSession) {
             return $userSession->checkPermission('viewVolume:' . $volume->uid);
-        });
+        }, true, true, false);
     }
 
     /**
@@ -175,7 +190,7 @@ class Volumes extends Component
      */
     public function getPublicVolumes(): array
     {
-        return ArrayHelper::where($this->getAllVolumes(), 'hasUrls');
+        return $this->_volumes()->where('hasUrls')->all();
     }
 
     /**
@@ -199,25 +214,31 @@ class Volumes extends Component
     }
 
     /**
+     * Returns a memoizable array of all volumes.
+     *
+     * @return MemoizableArray
+     */
+    private function _volumes(): MemoizableArray
+    {
+        if ($this->_volumes === null) {
+            $volumes = [];
+            foreach ($this->_createVolumeQuery()->all() as $result) {
+                $volumes[] = $this->createVolume($result);
+            }
+            $this->_volumes = new MemoizableArray($volumes);
+        }
+
+        return $this->_volumes;
+    }
+
+    /**
      * Returns all volumes.
      *
      * @return VolumeInterface[]
      */
     public function getAllVolumes(): array
     {
-        if ($this->_volumes !== null) {
-            return $this->_volumes;
-        }
-
-        $this->_volumes = [];
-        $results = $this->_createVolumeQuery()
-            ->all();
-
-        foreach ($results as $result) {
-            $this->_volumes[] = $this->createVolume($result);
-        }
-
-        return $this->_volumes;
+        return $this->_volumes()->all();
     }
 
     /**
@@ -228,7 +249,7 @@ class Volumes extends Component
      */
     public function getVolumeById(int $volumeId)
     {
-        return ArrayHelper::firstWhere($this->getAllVolumes(), 'id', $volumeId);
+        return $this->_volumes()->firstWhere('id', $volumeId);
     }
 
     /**
@@ -239,7 +260,7 @@ class Volumes extends Component
      */
     public function getVolumeByUid(string $volumeUid)
     {
-        return ArrayHelper::firstWhere($this->getAllVolumes(), 'uid', $volumeUid);
+        return $this->_volumes()->firstWhere('uid', $volumeUid, true);
     }
 
     /**
@@ -250,7 +271,7 @@ class Volumes extends Component
      */
     public function getVolumeByHandle(string $handle)
     {
-        return ArrayHelper::firstWhere($this->getAllVolumes(), 'handle', $handle, true);
+        return $this->_volumes()->firstWhere('handle', $handle, true);
     }
 
     /**
@@ -268,6 +289,8 @@ class Volumes extends Component
             'type' => get_class($volume),
             'hasUrls' => (bool)$volume->hasUrls,
             'url' => $volume->url,
+            'titleTranslationMethod' => $volume->titleTranslationMethod,
+            'titleTranslationKeyFormat' => $volume->titleTranslationKeyFormat ?: null,
             'settings' => ProjectConfigHelper::packAssociativeArrays($volume->getSettings()),
             'sortOrder' => (int)$volume->sortOrder,
         ];
@@ -378,6 +401,8 @@ class Volumes extends Component
             $volumeRecord->hasUrls = $data['hasUrls'];
             $volumeRecord->sortOrder = $data['sortOrder'];
             $volumeRecord->url = !empty($data['url']) ? $data['url'] : null;
+            $volumeRecord->titleTranslationMethod = $data['titleTranslationMethod'] ?? Field::TRANSLATION_METHOD_SITE;
+            $volumeRecord->titleTranslationKeyFormat = $data['titleTranslationKeyFormat'] ?? null;
             $volumeRecord->settings = ProjectConfigHelper::unpackAssociativeArrays($data['settings']);
             $volumeRecord->uid = $volumeUid;
 
@@ -484,11 +509,18 @@ class Volumes extends Component
      *
      * @param string $handle The volume handle
      * @return array|null
+     * @deprecated in 3.5.8. [Environment variables](https://craftcms.com/docs/3.x/config/#environmental-configuration) or [dependency injection](https://craftcms.com/knowledge-base/using-local-volumes-for-development)
+     * should be used instead.
      */
     public function getVolumeOverrides(string $handle)
     {
         if ($this->_overrides === null) {
             $this->_overrides = Craft::$app->getConfig()->getConfigFromFile('volumes');
+            if (!empty($this->_overrides)) {
+                Craft::$app->getDeprecator()->log('volumes.php', 'Support for overriding volume configs in `config/volumes.php` has been ' .
+                    'deprecated. [Environment variables](https://craftcms.com/docs/3.x/config/#environmental-configuration) or ' .
+                    '[dependency injection](https://craftcms.com/knowledge-base/using-local-volumes-for-development) should be used instead.');
+            }
         }
 
         return $this->_overrides[$handle] ?? null;
@@ -751,15 +783,21 @@ class Volumes extends Component
                 'fieldLayoutId',
                 'type',
                 'settings',
-                'uid'
+                'uid',
             ])
             ->from([Table::VOLUMES])
             ->orderBy(['sortOrder' => SORT_ASC]);
 
-        // todo: remove schema version condition after next beakpoint
+        // todo: remove schema version conditions after next beakpoint
         $schemaVersion = Craft::$app->getInstalledSchemaVersion();
         if (version_compare($schemaVersion, '3.1.19', '>=')) {
             $query->where(['dateDeleted' => null]);
+        }
+        if (version_compare($schemaVersion, '3.6.0', '>=')) {
+            $query->addSelect([
+                'titleTranslationMethod',
+                'titleTranslationKeyFormat',
+            ]);
         }
 
         return $query;

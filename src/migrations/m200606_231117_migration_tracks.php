@@ -6,7 +6,6 @@ use craft\db\Migration;
 use craft\db\Query;
 use craft\db\Table;
 use craft\helpers\MigrationHelper;
-use yii\db\Expression;
 
 /**
  * m200606_231117_migration_tracks migration.
@@ -44,6 +43,11 @@ class m200606_231117_migration_tracks extends Migration
                 'pluginId' => $plugin['id'],
             ], [], false);
         }
+
+        // Delete any rows that somehow still are missing a track (perhaps due to a missing FK on the old pluginId column)
+        $this->delete(Table::MIGRATIONS, [
+            'track' => null,
+        ]);
 
         // Now we can set the track column to NOT NULL
         if ($this->db->getIsPgsql()) {

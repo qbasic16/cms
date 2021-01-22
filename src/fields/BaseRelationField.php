@@ -23,6 +23,7 @@ use craft\errors\SiteNotFoundException;
 use craft\events\ElementCriteriaEvent;
 use craft\events\ElementEvent;
 use craft\helpers\ArrayHelper;
+use craft\helpers\Cp;
 use craft\helpers\ElementHelper;
 use craft\helpers\Html;
 use craft\helpers\Json;
@@ -199,11 +200,6 @@ abstract class BaseRelationField extends Field implements PreviewableFieldInterf
     protected $sortable = true;
 
     /**
-     * @var bool Whether existing relations should be made translatable after the field is saved
-     */
-    private $_makeExistingRelationsTranslatable = false;
-
-    /**
      * @inheritdoc
      */
     public function __construct(array $config = [])
@@ -216,8 +212,8 @@ abstract class BaseRelationField extends Field implements PreviewableFieldInterf
             unset($config['useTargetSite']);
         }
 
-        // If showSiteMenu isn't set, default it to true, to avoid a change in behavior
-        if (!isset($config['showSiteMenu'])) {
+        // Default showSiteMenu to true for existing fields
+        if (isset($config['id']) && !isset($config['showSiteMenu'])) {
             $config['showSiteMenu'] = true;
         }
 
@@ -460,16 +456,23 @@ abstract class BaseRelationField extends Field implements PreviewableFieldInterf
      */
     public function modifyElementsQuery(ElementQueryInterface $query, $value)
     {
-        if ($value === null) {
+        if (empty($value)) {
             return null;
         }
 
-        /** @var ElementQuery $query */
-        if ($value === 'not :empty:') {
-            $value = ':notempty:';
+        if (!is_array($value)) {
+            $value = [$value];
         }
 
-        if ($value === ':notempty:' || $value === ':empty:') {
+        /** @var ElementQuery $query */
+        $conditions = [];
+
+        if (isset($value[0]) && in_array($value[0], [':notempty:', ':empty:', 'not :empty:'])) {
+            $emptyCondition = array_shift($value);
+            if ($emptyCondition === 'not :empty:') {
+                $emptyCondition = ':notempty:';
+            }
+
             $ns = $this->handle . '_' . StringHelper::randomString(5);
             $condition = [
                 'exists', (new Query())
@@ -489,12 +492,14 @@ abstract class BaseRelationField extends Field implements PreviewableFieldInterf
                     ->andWhere(['not', ["elements_sites_$ns.enabled" => false]])
             ];
 
-            if ($value === ':notempty:') {
-                $query->subQuery->andWhere($condition);
+            if ($emptyCondition === ':notempty:') {
+                $conditions[] = $condition;
             } else {
-                $query->subQuery->andWhere(['not', $condition]);
+                $conditions[] = ['not', $condition];
             }
-        } else {
+        }
+
+        if (!empty($value)) {
             $parser = new ElementRelationParamParser([
                 'fields' => [
                     $this->handle => $this,
@@ -504,13 +509,17 @@ abstract class BaseRelationField extends Field implements PreviewableFieldInterf
                 'targetElement' => $value,
                 'field' => $this->handle,
             ]);
-
-            if ($condition === false) {
-                return false;
+            if ($condition !== false) {
+                $conditions[] = $condition;
             }
-
-            $query->subQuery->andWhere($condition);
         }
+
+        if (empty($conditions)) {
+            return false;
+        }
+
+        array_unshift($conditions, 'or');
+        $query->subQuery->andWhere($conditions);
 
         return null;
     }
@@ -570,7 +579,7 @@ abstract class BaseRelationField extends Field implements PreviewableFieldInterf
         /** @var ElementQuery $value */
         $titles = [];
 
-        foreach ($value->all() as $relatedElement) {
+        foreach ($this->_all($value, $element)->all() as $relatedElement) {
             $titles[] = (string)$relatedElement;
         }
 
@@ -593,9 +602,7 @@ abstract class BaseRelationField extends Field implements PreviewableFieldInterf
         $html = "<div id='{$id}' class='elementselect'><div class='elements'>";
 
         foreach ($value as $relatedElement) {
-            $html .= Craft::$app->getView()->renderTemplate('_elements/element', [
-                'element' => $relatedElement
-            ]);
+            $html .= Cp::elementHtml($relatedElement);
         }
 
         $html .= '</div></div>';
@@ -623,19 +630,14 @@ JS;
         }
 
         $first = array_shift($value);
-
-        $html = Craft::$app->getView()->renderTemplate('_elements/element', [
-            'element' => $first,
-        ]);
+        $html = $this->elementPreviewHtml($first);
 
         if (!empty($value)) {
             $otherHtml = '';
             foreach ($value as $other) {
-                $otherHtml .= Craft::$app->getView()->renderTemplate('_elements/element', [
-                    'element' => $other,
-                ]);
+                $otherHtml .= $this->elementPreviewHtml($other);
             }
-            $html .= Html::tag('span', '+' . Craft::$app->getFormatter()->asDecimal(count($value)), [
+            $html .= Html::tag('span', '+' . Craft::$app->getFormatter()->asInteger(count($value)), [
                 'title' => implode(', ', ArrayHelper::getColumn($value, 'title')),
                 'class' => 'btn small',
                 'role' => 'button',
@@ -644,6 +646,18 @@ JS;
         }
 
         return $html;
+    }
+
+    /**
+     * Renders a related element’s HTML for the element index.
+     *
+     * @param ElementInterface $element
+     * @return string
+     * @since 3.5.11
+     */
+    protected function elementPreviewHtml(ElementInterface $element): string
+    {
+        return Cp::elementHtml($element);
     }
 
     /**
@@ -712,30 +726,16 @@ JS;
     /**
      * @inheritdoc
      */
-    public function beforeSave(bool $isNew): bool
-    {
-        $this->_makeExistingRelationsTranslatable = false;
-
-        if (!$this->getIsNew() && $this->localizeRelations) {
-            $existingField = Craft::$app->getFields()->getFieldById($this->id);
-
-            if ($existingField && $existingField instanceof self && !$existingField->localizeRelations) {
-                $this->_makeExistingRelationsTranslatable = true;
-            }
-        }
-
-        return parent::beforeSave($isNew);
-    }
-
-    /**
-     * @inheritdoc
-     */
     public function afterSave(bool $isNew)
     {
-        if ($this->_makeExistingRelationsTranslatable) {
-            Queue::push(new LocalizeRelations([
-                'fieldId' => $this->id,
-            ]));
+        // If the propagation method just changed, resave all the Matrix blocks
+        if ($this->oldSettings !== null) {
+            $oldLocalizeRelations = (bool)($this->oldSettings['localizeRelations'] ?? false);
+            if ($this->localizeRelations !== $oldLocalizeRelations) {
+                Queue::push(new LocalizeRelations([
+                    'fieldId' => $this->id,
+                ]));
+            }
         }
 
         parent::afterSave($isNew);
@@ -822,45 +822,40 @@ JS;
 
         foreach (Craft::$app->getSites()->getAllSites() as $site) {
             $siteOptions[] = [
-                'label' => Craft::t('site', $site->name),
+                'label' => Craft::t('site', $site->getName()),
                 'value' => $site->uid
             ];
         }
 
         return
-            $view->renderTemplateMacro('_includes/forms', 'checkboxField', [
-                [
-                    'label' => Craft::t('app', 'Relate {type} from a specific site?', ['type' => $pluralType]),
-                    'name' => 'useTargetSite',
-                    'checked' => $showTargetSite,
-                    'toggle' => 'target-site-field',
-                    'reverseToggle' => 'show-site-menu-field',
-                ]
+            Cp::checkboxFieldHtml([
+                'checkboxLabel' => Craft::t('app', 'Relate {type} from a specific site?', ['type' => $pluralType]),
+                'name' => 'useTargetSite',
+                'checked' => $showTargetSite,
+                'toggle' => 'target-site-field',
+                'reverseToggle' => 'show-site-menu-field',
             ]) .
-            $view->renderTemplateMacro('_includes/forms', 'selectField', [
-                [
-                    'fieldClass' => !$showTargetSite ? 'hidden' : null,
-                    'label' => Craft::t('app', 'Which site should {type} be related from?', ['type' => $pluralType]),
-                    'id' => 'target-site',
-                    'name' => 'targetSiteId',
-                    'options' => $siteOptions,
-                    'value' => $this->targetSiteId,
-                ]
+            Cp::selectFieldHtml([
+                'fieldClass' => !$showTargetSite ? ['hidden'] : null,
+                'label' => Craft::t('app', 'Which site should {type} be related from?', ['type' => $pluralType]),
+                'id' => 'target-site',
+                'name' => 'targetSiteId',
+                'options' => $siteOptions,
+                'value' => $this->targetSiteId,
             ]) .
-            $view->renderTemplateMacro('_includes/forms', 'checkboxField', [
-                [
-                    'fieldClass' => $showTargetSite ? 'hidden' : null,
-                    'label' => Craft::t('app', 'Show the site menu'),
-                    'instructions' => Craft::t('app', 'Whether the site menu should be shown for {type} selection modals.', [
-                        'type' => $type,
-                    ]),
-                    'warning' => Craft::t('app', 'Relations don’t store the selected site, so this should only be enabled if some {type} aren’t propagated to all sites.', [
-                        'type' => $pluralType,
-                    ]),
-                    'id' => 'show-site-menu',
-                    'name' => 'showSiteMenu',
-                    'checked' => $this->showSiteMenu,
-                ]
+            Cp::checkboxFieldHtml([
+                'fieldset' => true,
+                'fieldClass' => $showTargetSite ? ['hidden'] : null,
+                'checkboxLabel' => Craft::t('app', 'Show the site menu'),
+                'instructions' => Craft::t('app', 'Whether the site menu should be shown for {type} selection modals.', [
+                    'type' => $type,
+                ]),
+                'warning' => Craft::t('app', 'Relations don’t store the selected site, so this should only be enabled if some {type} aren’t propagated to all sites.', [
+                    'type' => $pluralType,
+                ]),
+                'id' => 'show-site-menu',
+                'name' => 'showSiteMenu',
+                'checked' => $this->showSiteMenu,
             ]);
     }
 
@@ -883,15 +878,13 @@ JS;
             $viewModeOptions[] = ['label' => $label, 'value' => $key];
         }
 
-        return Craft::$app->getView()->renderTemplateMacro('_includes/forms', 'selectField', [
-            [
-                'label' => Craft::t('app', 'View Mode'),
-                'instructions' => Craft::t('app', 'Choose how the field should look for authors.'),
-                'id' => 'viewMode',
-                'name' => 'viewMode',
-                'options' => $viewModeOptions,
-                'value' => $this->viewMode
-            ]
+        return Cp::selectFieldHtml([
+            'label' => Craft::t('app', 'View Mode'),
+            'instructions' => Craft::t('app', 'Choose how the field should look for authors.'),
+            'id' => 'viewMode',
+            'name' => 'viewMode',
+            'options' => $viewModeOptions,
+            'value' => $this->viewMode,
         ]);
     }
 
@@ -941,9 +934,7 @@ JS;
         }
 
         $selectionCriteria = $this->inputSelectionCriteria();
-        if (($siteId = $this->inputSiteId($element)) !== null) {
-            $selectionCriteria['siteId'] = $siteId;
-        }
+        $selectionCriteria['siteId'] = $this->inputSiteId($element);
 
         $disabledElementIds = [];
 
@@ -1025,13 +1016,11 @@ JS;
      * @param ElementInterface|null $element
      * @return int|null
      * @since 3.4.19
+     * @deprecated in 3.5.16
      */
     protected function inputSiteId(ElementInterface $element = null)
     {
-        if ($this->targetSiteId) {
-            return $this->targetSiteId($element);
-        }
-        return null;
+        return $this->targetSiteId($element);
     }
 
     /**
@@ -1051,7 +1040,7 @@ JS;
                 }
             }
 
-            if ($element !== null) {
+            if ($element !== null && $element::isLocalized()) {
                 return $element->siteId;
             }
         }

@@ -69,7 +69,7 @@ class ErrorHandler extends \yii\web\ErrorHandler
     public function handleError($code, $message, $file, $line)
     {
         // Because: https://bugs.php.net/bug.php?id=74980
-        if (PHP_VERSION_ID >= 70100 && strpos($message, 'Narrowing occurred during type inference. Please file a bug report') !== false) {
+        if (strpos($message, 'Narrowing occurred during type inference. Please file a bug report') !== false) {
             return null;
         }
 
@@ -120,6 +120,14 @@ class ErrorHandler extends \yii\web\ErrorHandler
      */
     protected function renderException($exception)
     {
+        // Set the response format back to HTML if it's still set to raw
+        if (Craft::$app->has('response')) {
+            $response = Craft::$app->getResponse();
+            if ($response->format === Response::FORMAT_RAW) {
+                $response->format = Response::FORMAT_HTML;
+            }
+        }
+
         // Show a broken image for image requests
         if (
             $exception instanceof NotFoundHttpException &&
@@ -170,7 +178,7 @@ class ErrorHandler extends \yii\web\ErrorHandler
     {
         if (strpos($file, 'compiled_templates') !== false) {
             try {
-                list($file, $line) = $this->_resolveTemplateTrace($file, $line);
+                [$file, $line] = $this->_resolveTemplateTrace($file, $line);
             } catch (\Throwable $e) {
                 // oh well, we tried
             }

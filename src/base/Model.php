@@ -58,19 +58,24 @@ abstract class Model extends \yii\base\Model
      */
     const EVENT_DEFINE_EXTRA_FIELDS = 'defineExtraFields';
 
+    public function __construct($config = [])
+    {
+        // Normalize the DateTime attributes
+        foreach ($this->datetimeAttributes() as $attribute) {
+            if (array_key_exists($attribute, $config) && $config[$attribute] !== null) {
+                $config[$attribute] = DateTimeHelper::toDateTime($config[$attribute]);
+            }
+        }
+
+        parent::__construct($config);
+    }
+
     /**
      * @inheritdoc
      */
     public function init()
     {
         parent::init();
-
-        // Normalize the DateTime attributes
-        foreach ($this->datetimeAttributes() as $attribute) {
-            if ($this->$attribute !== null) {
-                $this->$attribute = DateTimeHelper::toDateTime($this->$attribute);
-            }
-        }
 
         if ($this->hasEventHandlers(self::EVENT_INIT)) {
             $this->trigger(self::EVENT_INIT);
@@ -168,7 +173,7 @@ abstract class Model extends \yii\base\Model
 
     /**
      * @inheritdoc
-     * @since 3.6.0
+     * @since 4.0.0
      */
     public function setAttributes($values, $safeOnly = true)
     {
@@ -280,7 +285,7 @@ abstract class Model extends \yii\base\Model
      */
     public function getError(string $attribute)
     {
-        Craft::$app->getDeprecator()->log('Model::getError()', 'getError() has been deprecated. Use getFirstError() instead.');
+        Craft::$app->getDeprecator()->log('Model::getError()', '`getError()` has been deprecated. Use `getFirstError()` instead.');
 
         return $this->getFirstError($attribute);
     }

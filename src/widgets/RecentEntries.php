@@ -35,7 +35,7 @@ class RecentEntries extends Widget
      */
     public static function icon()
     {
-        return Craft::getAlias('@app/icons/clock.svg');
+        return Craft::getAlias('@appicons/clock.svg');
     }
 
     /**
@@ -115,7 +115,7 @@ class RecentEntries extends Widget
             if ($site) {
                 $title = Craft::t('app', '{title} ({site})', [
                     'title' => $title,
-                    'site' => Craft::t('site', $site->name),
+                    'site' => Craft::t('site', $site->getName()),
                 ]);
             }
         }

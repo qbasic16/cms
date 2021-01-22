@@ -3,8 +3,8 @@
 return [
     'id' => 'CraftCMS',
     'name' => 'Craft CMS',
-    'version' => '3.6.0-alpha',
-    'schemaVersion' => '3.5.12',
+    'version' => '4.0.0-alpha',
+    'schemaVersion' => '3.6.0',
     'minVersionRequired' => '2.6.2788',
     'basePath' => dirname(__DIR__), // Defines the @app alias
     'runtimePath' => '@storage/runtime', // Defines the @runtime alias
@@ -71,6 +71,9 @@ return [
         'images' => [
             'class' => craft\services\Images::class,
         ],
+        'log' => [
+            'class' => craft\log\Dispatcher::class,
+        ],
         'matrix' => [
             'class' => craft\services\Matrix::class,
         ],
@@ -130,6 +133,11 @@ return [
         ],
         'updates' => [
             'class' => craft\services\Updates::class,
+        ],
+        'urlManager' => [
+            'class' => craft\web\UrlManager::class,
+            'enablePrettyUrl' => true,
+            'ruleConfig' => ['class' => craft\web\UrlRule::class],
         ],
         'users' => [
             'class' => craft\services\Users::class,
@@ -240,11 +248,6 @@ return [
 
             // Default to the application language
             return $i18n->getLocaleById(Craft::$app->language);
-        },
-
-        'log' => function() {
-            $config = craft\helpers\App::logConfig();
-            return $config ? Craft::createObject($config) : null;
         },
 
         'mailer' => function() {

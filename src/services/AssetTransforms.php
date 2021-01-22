@@ -9,6 +9,7 @@ namespace craft\services;
 
 use Craft;
 use craft\base\LocalVolumeInterface;
+use craft\base\MemoizableArray;
 use craft\db\Connection;
 use craft\db\Query;
 use craft\db\Table;
@@ -99,7 +100,8 @@ class AssetTransforms extends Component
     public $db = 'db';
 
     /**
-     * @var AssetTransform[]
+     * @var MemoizableArray|null
+     * @see _transforms()
      */
     private $_transforms;
 
@@ -119,6 +121,18 @@ class AssetTransforms extends Component
     private $_activeTransformIndex;
 
     /**
+     * Serializer
+     *
+     * @since 3.5.14
+     */
+    public function __serialize()
+    {
+        $vars = get_object_vars($this);
+        unset($vars['_transforms']);
+        return $vars;
+    }
+
+    /**
      * @inheritdoc
      */
     public function init()
@@ -128,23 +142,31 @@ class AssetTransforms extends Component
     }
 
     /**
+     * Returns a memoizable array of all named asset transforms.
+     *
+     * @return MemoizableArray
+     */
+    private function _transforms(): MemoizableArray
+    {
+        if ($this->_transforms === null) {
+            $transforms = [];
+            foreach ($this->_createTransformQuery()->all() as $result) {
+                $transforms[] = new AssetTransform($result);
+            }
+            $this->_transforms = new MemoizableArray($transforms);
+        }
+
+        return $this->_transforms;
+    }
+
+    /**
      * Returns all named asset transforms.
      *
      * @return AssetTransform[]
      */
     public function getAllTransforms(): array
     {
-        if ($this->_transforms !== null) {
-            return $this->_transforms;
-        }
-
-        $this->_transforms = [];
-
-        foreach ($this->_createTransformQuery()->all() as $result) {
-            $this->_transforms[] = new AssetTransform($result);
-        }
-
-        return $this->_transforms;
+        return $this->_transforms()->all();
     }
 
     /**
@@ -155,7 +177,7 @@ class AssetTransforms extends Component
      */
     public function getTransformByHandle(string $handle)
     {
-        return ArrayHelper::firstWhere($this->getAllTransforms(), 'handle', $handle, true);
+        return $this->_transforms()->firstWhere('handle', $handle, true);
     }
 
     /**
@@ -166,7 +188,7 @@ class AssetTransforms extends Component
      */
     public function getTransformById(int $id)
     {
-        return ArrayHelper::firstWhere($this->getAllTransforms(), 'id', $id);
+        return $this->_transforms()->firstWhere('id', $id);
     }
 
     /**
@@ -178,7 +200,7 @@ class AssetTransforms extends Component
      */
     public function getTransformByUid(string $uid)
     {
-        return ArrayHelper::firstWhere($this->getAllTransforms(), 'uid', $uid, true);
+        return $this->_transforms()->firstWhere('uid', $uid, true);
     }
 
     /**
@@ -335,7 +357,7 @@ class AssetTransforms extends Component
     {
         // todo: remove this code in 3.0 & hardcode the $transform type
         if (is_int($transform)) {
-            Craft::$app->getDeprecator()->log(self::class . '::deleteTransform(id)', self::class . '::deleteTransform() should only be called with a ' . AssetTransform::class . ' reference. Use ' . self::class . '::deleteTransformById() to get a transform by its ID.');
+            Craft::$app->getDeprecator()->log(self::class . '::deleteTransform(id)', '`' . self::class . '::deleteTransform()` should only be called with a `' . AssetTransform::class . '` reference. Use `' . self::class . '::deleteTransformById()` to get a transform by its ID.');
             return $this->deleteTransformById($transform);
         }
         if (!$transform instanceof AssetTransform) {
@@ -394,7 +416,7 @@ class AssetTransforms extends Component
     }
 
     /**
-     * Eager-loads transform indexes for a given set of file IDs.
+     * Eager-loads transform indexes the given list of assets.
      *
      * You can include `srcset`-style sizes (e.g. `100w` or `2x`) following a normal transform definition, for example:
      *
@@ -413,7 +435,7 @@ class AssetTransforms extends Component
      * When a `srcset`-style size is encountered, the preceding normal transform definition will be used as a
      * reference when determining the resulting transform dimensions.
      *
-     * @param Asset[]|array $assets The files to eager-load tranforms for
+     * @param Asset[]|array $assets The assets or asset data to eager-load transforms for
      * @param array $transforms The transform definitions to eager-load
      */
     public function eagerLoadTransforms(array $assets, array $transforms)
@@ -435,7 +457,7 @@ class AssetTransforms extends Component
         foreach ($transforms as $transform) {
             // Is this a srcset-style size (2x, 100w, etc.)?
             try {
-                list($sizeValue, $sizeUnit) = AssetsHelper::parseSrcsetSize($transform);
+                [$sizeValue, $sizeUnit] = AssetsHelper::parseSrcsetSize($transform);
             } catch (InvalidArgumentException $e) {
                 // All good.
             }
@@ -602,7 +624,7 @@ class AssetTransforms extends Component
     }
 
     /**
-     * Validates a transform index result to see if the index is still valid for a given file.
+     * Validates a transform index result to see if the index is still valid for a given asset.
      *
      * @param array $result
      * @param AssetTransform $transform
@@ -739,7 +761,7 @@ class AssetTransforms extends Component
 
         $asset = Craft::$app->getAssets()->getAssetById($index->assetId);
         $volume = $asset->getVolume();
-        $index->detectedFormat = !empty($index->format) ? $index->format : $this->detectAutoTransformFormat($asset);
+        $index->detectedFormat = $index->format ?: $this->detectAutoTransformFormat($asset);
 
         $transformFilename = pathinfo($asset->filename, PATHINFO_FILENAME) . '.' . $index->detectedFormat;
         $index->filename = $transformFilename;
@@ -1238,11 +1260,7 @@ class AssetTransforms extends Component
      */
     public function getTransformFilename(Asset $asset, AssetTransformIndex $index): string
     {
-        if (empty($index->filename)) {
-            return $asset->filename;
-        }
-
-        return $index->filename;
+        return $index->filename ?: $asset->filename;
     }
 
     /**
@@ -1498,9 +1516,14 @@ class AssetTransforms extends Component
         }
 
         $transform = $index->getTransform();
+        $images = Craft::$app->getImages();
 
         if ($index->detectedFormat === null) {
-            $index->detectedFormat = !empty($index->format) ? $index->format : $this->detectAutoTransformFormat($asset);
+            $index->detectedFormat = $index->format ?: $this->detectAutoTransformFormat($asset);
+        }
+
+        if ($index->format === 'webp' && !$images->getSupportsWebP()) {
+            throw new AssetTransformException("The `webp` format is not supported on this server!");
         }
 
         $volume = $asset->getVolume();
@@ -1527,7 +1550,6 @@ class AssetTransforms extends Component
         $imageSource = $asset->getTransformSource();
         $quality = $transform->quality ?: Craft::$app->getConfig()->getGeneral()->defaultImageQuality;
 
-        $images = Craft::$app->getImages();
         if (strtolower($asset->getExtension()) === 'svg' && $index->detectedFormat !== 'svg') {
             $image = $images->loadImage($imageSource, true, max($transform->width, $transform->height));
         } else {

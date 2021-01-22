@@ -25,7 +25,9 @@ use craft\elements\db\ElementQuery;
 use craft\elements\db\ElementQueryInterface;
 use craft\elements\db\EntryQuery;
 use craft\errors\UnsupportedSiteException;
+use craft\events\DefineEntryTypesEvent;
 use craft\helpers\ArrayHelper;
+use craft\helpers\Cp;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\Db;
 use craft\helpers\ElementHelper;
@@ -39,6 +41,7 @@ use craft\services\Structures;
 use craft\validators\DateTimeValidator;
 use yii\base\Exception;
 use yii\base\InvalidConfigException;
+use yii\db\Expression;
 
 /**
  * Entry represents an entry element.
@@ -54,6 +57,14 @@ class Entry extends Element
     const STATUS_LIVE = 'live';
     const STATUS_PENDING = 'pending';
     const STATUS_EXPIRED = 'expired';
+
+    /**
+     * @event DefineEntryTypesEvent The event that is triggered when defining the available entry types for the entry
+     *
+     * @see getAvailableEntryTypes()
+     * @since 3.6.0
+     */
+    const EVENT_DEFINE_ENTRY_TYPES = 'defineEntryTypes';
 
     /**
      * @inheritdoc
@@ -425,13 +436,13 @@ class Entry extends Element
                 }
 
                 // Delete?
-                if (
-                    $userSession->checkPermission('deleteEntries:' . $section->uid) &&
-                    $userSession->checkPermission('deletePeerEntries:' . $section->uid)
-                ) {
+                if ($userSession->checkPermission("deleteEntries:$section->uid")) {
                     $actions[] = Delete::class;
 
-                    if ($section->type === Section::TYPE_STRUCTURE) {
+                    if (
+                        $section->type === Section::TYPE_STRUCTURE &&
+                        $userSession->checkPermission("deletePeerEntries:$section->uid")
+                    ) {
                         $actions[] = [
                             'type' => Delete::class,
                             'withDescendants' => true,
@@ -461,17 +472,41 @@ class Entry extends Element
             'title' => Craft::t('app', 'Title'),
             'slug' => Craft::t('app', 'Slug'),
             'uri' => Craft::t('app', 'URI'),
-            'postDate' => Craft::t('app', 'Post Date'),
-            'expiryDate' => Craft::t('app', 'Expiry Date'),
+            [
+                'label' => Craft::t('app', 'Post Date'),
+                'orderBy' => function(int $dir) {
+                    if ($dir === SORT_ASC) {
+                        if (Craft::$app->getDb()->getIsMysql()) {
+                            return new Expression('[[postDate]] IS NOT NULL DESC, [[postDate]] ASC');
+                        } else {
+                            return new Expression('[[postDate]] ASC NULLS LAST');
+                        }
+                    }
+                    if (Craft::$app->getDb()->getIsMysql()) {
+                        return new Expression('[[postDate]] IS NULL DESC, [[postDate]] DESC');
+                    } else {
+                        return new Expression('[[postDate]] DESC NULLS FIRST');
+                    }
+                },
+                'attribute' => 'postDate',
+                'defaultDir' => 'desc',
+            ],
+            [
+                'label' => Craft::t('app', 'Expiry Date'),
+                'orderBy' => 'expiryDate',
+                'defaultDir' => 'desc',
+            ],
             [
                 'label' => Craft::t('app', 'Date Created'),
                 'orderBy' => 'elements.dateCreated',
-                'attribute' => 'dateCreated'
+                'attribute' => 'dateCreated',
+                'defaultDir' => 'desc',
             ],
             [
                 'label' => Craft::t('app', 'Date Updated'),
                 'orderBy' => 'elements.dateUpdated',
-                'attribute' => 'dateUpdated'
+                'attribute' => 'dateUpdated',
+                'defaultDir' => 'desc',
             ],
             [
                 'label' => Craft::t('app', 'ID'),
@@ -900,7 +935,7 @@ class Entry extends Element
 
         return [
             'templates/render', [
-                'template' => $sectionSiteSettings[$siteId]->template,
+                'template' => (string)$sectionSiteSettings[$siteId]->template,
                 'variables' => [
                     'entry' => $this,
                 ]
@@ -996,6 +1031,29 @@ class Entry extends Element
         }
 
         return $section;
+    }
+
+    /**
+     * Returns the available entry types for the entry.
+     *
+     * @return EntryType[]
+     * @throws InvalidConfigException
+     * @since 3.6.0
+     */
+    public function getAvailableEntryTypes(): array
+    {
+        $entryTypes = $this->getSection()->getEntryTypes();
+
+        // Fire a 'defineEntryTypes' event
+        if ($this->hasEventHandlers(self::EVENT_DEFINE_ENTRY_TYPES)) {
+            $event = new DefineEntryTypesEvent([
+                'entryTypes' => $entryTypes,
+            ]);
+            $this->trigger(self::EVENT_DEFINE_ENTRY_TYPES, $event);
+            $entryTypes = $event->entryTypes;
+        }
+
+        return $entryTypes;
     }
 
     /**
@@ -1151,6 +1209,22 @@ class Entry extends Element
 
     /**
      * @inheritdoc
+     */
+    public function getIsDeletable(): bool
+    {
+        $section = $this->getSection();
+        if ($section === Section::TYPE_SINGLE) {
+            return false;
+        }
+        $userSession = Craft::$app->getUser();
+        return (
+            $userSession->checkPermission("deleteEntries:$section->uid") &&
+            ($this->authorId == $userSession->getId() || $userSession->checkPermission("deletePeerEntries:$section->uid"))
+        );
+    }
+
+    /**
+     * @inheritdoc
      *
      * ---
      * ```php
@@ -1210,7 +1284,7 @@ class Entry extends Element
         switch ($attribute) {
             case 'author':
                 $author = $this->getAuthor();
-                return $author ? Craft::$app->getView()->renderTemplate('_elements/element', ['element' => $author]) : '';
+                return $author ? Cp::elementHtml($author) : '';
 
             case 'section':
                 return Html::encode(Craft::t('site', $this->getSection()->name));
@@ -1243,7 +1317,7 @@ class Entry extends Element
                 ) {
                     return '';
                 }
-                return Craft::$app->getView()->renderTemplate('_elements/element', ['element' => $creator]);
+                return Cp::elementHtml($creator);
         }
 
         return parent::tableAttributeHtml($attribute);
@@ -1259,7 +1333,7 @@ class Entry extends Element
 
         // Show the Entry Type field?
         if ($this->id === null) {
-            $entryTypes = $this->getSection()->getEntryTypes();
+            $entryTypes = $this->getAvailableEntryTypes();
 
             if (count($entryTypes) > 1) {
                 $entryTypeOptions = [];
@@ -1271,13 +1345,11 @@ class Entry extends Element
                     ];
                 }
 
-                $html .= Craft::$app->getView()->renderTemplateMacro('_includes/forms', 'selectField', [
-                    [
-                        'label' => Craft::t('app', 'Entry Type'),
-                        'id' => 'entryType',
-                        'value' => $this->typeId,
-                        'options' => $entryTypeOptions,
-                    ]
+                $html .= Cp::selectFieldHtml([
+                    'label' => Craft::t('app', 'Entry Type'),
+                    'id' => 'entryType',
+                    'value' => $this->typeId,
+                    'options' => $entryTypeOptions,
                 ]);
 
                 $typeInputId = $view->namespaceInputId('entryType');

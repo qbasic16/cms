@@ -22,6 +22,7 @@ use craft\events\RegisterGqlPermissionsEvent;
 use craft\events\RegisterGqlQueriesEvent;
 use craft\events\RegisterGqlSchemaComponentsEvent;
 use craft\events\RegisterGqlTypesEvent;
+use craft\gql\ArgumentManager;
 use craft\gql\base\Directive;
 use craft\gql\base\GeneratorInterface;
 use craft\gql\base\InterfaceType;
@@ -29,6 +30,7 @@ use craft\gql\directives\FormatDateTime;
 use craft\gql\directives\Markdown;
 use craft\gql\directives\ParseRefs;
 use craft\gql\directives\Transform;
+use craft\gql\ElementQueryConditionBuilder;
 use craft\gql\GqlEntityRegistry;
 use craft\gql\interfaces\Element as ElementInterface;
 use craft\gql\interfaces\elements\Asset as AssetInterface;
@@ -294,35 +296,35 @@ class Gql extends Component
     /**
      * Complexity value for accessing a simple field.
      *
-     * @since 3.5.0
+     * @since 3.6.0
      */
     const GRAPHQL_COMPLEXITY_SIMPLE_FIELD = 1;
 
     /**
      * Complexity value for accessing a field that will trigger a single query for the request.
      *
-     * @since 3.5.0
+     * @since 3.6.0
      */
     const GRAPHQL_COMPLEXITY_QUERY = 10;
 
     /**
      * Complexity value for accessing a field that will add an instance of eager-loading for the request.
      *
-     * @since 3.5.0
+     * @since 3.6.0
      */
     const GRAPHQL_COMPLEXITY_EAGER_LOAD = 25;
 
     /**
      * Complexity value for accessing a field that will likely trigger a CPU heavy operation.
      *
-     * @since 3.5.0
+     * @since 3.6.0
      */
     const GRAPHQL_COMPLEXITY_CPU_HEAVY = 200;
 
     /**
      * Complexity value for accessing a field that will trigger a query for every parent returned,
      *
-     * @since 3.5.0
+     * @since 3.6.0
      */
     const GRAPHQL_COMPLEXITY_NPLUS1 = 500;
 
@@ -499,6 +501,14 @@ class Gql extends Component
             'query' => $query,
             'variables' => $variables,
             'operationName' => $operationName,
+            'context' => [
+                'conditionBuilder' => Craft::createObject([
+                    'class' => ElementQueryConditionBuilder::class,
+                ]),
+                'argumentManager' => Craft::createObject([
+                    'class' => ArgumentManager::class
+                ])
+            ]
         ]);
 
         $this->trigger(self::EVENT_BEFORE_EXECUTE_GQL_QUERY, $event);
@@ -506,7 +516,7 @@ class Gql extends Component
         if ($event->result === null) {
             $cacheKey = $this->_getCacheKey(
                 $schema,
-                $query,
+                $event->query,
                 $event->rootValue,
                 $event->context,
                 $event->variables,
@@ -516,14 +526,14 @@ class Gql extends Component
             if ($cacheKey && ($cachedResult = $this->getCachedResult($cacheKey)) !== null) {
                 $event->result = $cachedResult;
             } else {
-                $isIntrospectionQuery = StringHelper::containsAny($query, ['__schema', '__type']);
+                $isIntrospectionQuery = StringHelper::containsAny($event->query, ['__schema', '__type']);
                 $schemaDef = $this->getSchemaDef($schema, $debugMode || $isIntrospectionQuery);
                 $elementsService = Craft::$app->getElements();
                 $elementsService->startCollectingCacheTags();
 
                 $event->result = GraphQL::executeQuery(
                     $schemaDef,
-                    $query,
+                    $event->query,
                     $event->rootValue,
                     $event->context,
                     $event->variables,
@@ -1231,8 +1241,14 @@ class Gql extends Component
         }
 
         try {
-            $cacheKey = self::CACHE_TAG . "::$schema->uid::" . md5($query) . '::' . serialize($rootValue) . '::' .
-                serialize($context) . '::' . serialize($variables) . ($operationName ? "::$operationName" : '');
+            $cacheKey = self::CACHE_TAG .
+                '::' . Craft::$app->getSites()->getCurrentSite()->id .
+                '::' . $schema->uid .
+                '::' . md5($query) .
+                '::' . serialize($rootValue) .
+                '::' . serialize($context) .
+                '::' . serialize($variables) .
+                ($operationName ? "::$operationName" : '');
         } catch (\Throwable $e) {
             Craft::$app->getErrorHandler()->logException($e);
             $cacheKey = null;

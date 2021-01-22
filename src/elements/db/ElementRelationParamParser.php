@@ -14,7 +14,6 @@ use craft\db\Query;
 use craft\db\Table;
 use craft\fields\BaseRelationField;
 use craft\fields\Matrix;
-use craft\helpers\ArrayHelper;
 use craft\helpers\StringHelper;
 use craft\models\Site;
 use yii\base\BaseObject;
@@ -146,7 +145,7 @@ class ElementRelationParamParser extends BaseObject
 
         // Check for now-deprecated sourceLocale param
         if (isset($relCriteria['sourceLocale'])) {
-            Craft::$app->getDeprecator()->log('relatedTo:sourceLocale', 'The sourceLocale criteria in relatedTo element query params has been deprecated. Use sourceSite instead.');
+            Craft::$app->getDeprecator()->log('relatedTo:sourceLocale', 'The `sourceLocale` criteria in `relatedTo` element query params has been deprecated. Use `sourceSite` instead.');
             $relCriteria['sourceSite'] = $relCriteria['sourceLocale'];
             unset($relCriteria['sourceLocale']);
         }
@@ -201,9 +200,9 @@ class ElementRelationParamParser extends BaseObject
                         }
                     } else if ($element instanceof ElementQueryInterface) {
                         $ids = $element->ids();
-                        ArrayHelper::append($relElementIds, ...$ids);
+                        array_push($relElementIds, ...$ids);
                         if ($elementParam === 'element') {
-                            ArrayHelper::append($relSourceElementIds, ...$ids);
+                            array_push($relSourceElementIds, ...$ids);
                         }
                     }
                 }

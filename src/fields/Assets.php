@@ -22,11 +22,13 @@ use craft\gql\interfaces\elements\Asset as AssetInterface;
 use craft\gql\resolvers\elements\Asset as AssetResolver;
 use craft\helpers\ArrayHelper;
 use craft\helpers\Assets as AssetsHelper;
+use craft\helpers\Cp;
 use craft\helpers\Db;
 use craft\helpers\ElementHelper;
 use craft\helpers\FileHelper;
 use craft\helpers\Gql;
 use craft\helpers\Html;
+use craft\models\GqlSchema;
 use craft\web\UploadedFile;
 use GraphQL\Type\Definition\Type;
 use yii\base\InvalidConfigException;
@@ -39,6 +41,15 @@ use yii\base\InvalidConfigException;
  */
 class Assets extends BaseRelationField
 {
+    /**
+     * @since 3.5.11
+     */
+    const PREVIEW_MODE_FULL = 'full';
+    /**
+     * @since 3.5.11
+     */
+    const PREVIEW_MODE_THUMBS = 'thumbs';
+
     /**
      * @inheritdoc
      */
@@ -75,6 +86,12 @@ class Assets extends BaseRelationField
      * @var bool Whether related assets should be limited to a single folder
      */
     public $useSingleFolder = false;
+
+    /**
+     * @var bool Whether it should be possible to upload files directly to the field.
+     * @since 3.5.13
+     */
+    public $allowUploads = true;
 
     /**
      * @var string|null Where files should be uploaded to by default, in format
@@ -128,6 +145,12 @@ class Assets extends BaseRelationField
     public $showUnpermittedFiles = false;
 
     /**
+     * @var string How related assets should be presented within element index views.
+     * @since 3.5.11
+     */
+    public $previewMode = self::PREVIEW_MODE_FULL;
+
+    /**
      * @inheritdoc
      */
     protected $allowLargeThumbsView = true;
@@ -153,7 +176,7 @@ class Assets extends BaseRelationField
     private $_uploadedDataFiles;
 
     /**
-     * @var int|null The default upload location for this field to open in modal
+     * @var string|null The default upload location for this field to open in modal
      */
     private $_defaultUploadLocation;
 
@@ -178,6 +201,7 @@ class Assets extends BaseRelationField
         parent::init();
 
         $this->useSingleFolder = (bool)$this->useSingleFolder;
+        $this->allowUploads = (bool)$this->allowUploads;
         $this->showUnpermittedVolumes = (bool)$this->showUnpermittedVolumes;
         $this->showUnpermittedFiles = (bool)$this->showUnpermittedFiles;
 
@@ -203,6 +227,8 @@ class Assets extends BaseRelationField
                 return (bool)$field->restrictFiles;
             }
         ];
+
+        $rules[] = [['previewMode'], 'in', 'range' => [self::PREVIEW_MODE_FULL, self::PREVIEW_MODE_THUMBS], 'skipOnEmpty' => false];
 
         return $rules;
     }
@@ -323,7 +349,7 @@ class Assets extends BaseRelationField
         $allowedExtensions = $this->_getAllowedExtensions();
         foreach ($filenames as $filename) {
             if (!in_array(mb_strtolower(pathinfo($filename, PATHINFO_EXTENSION)), $allowedExtensions, true)) {
-                $element->addError($this->handle, Craft::t('app', '"{filename}" is not allowed in this field.', [
+                $element->addError($this->handle, Craft::t('app', '“{filename}” is not allowed in this field.', [
                     'filename' => $filename
                 ]));
             }
@@ -356,7 +382,7 @@ class Assets extends BaseRelationField
         }
 
         foreach ($filenames as $filename) {
-            $element->addError($this->handle, Craft::t('app', '"{filename}" is too large.', [
+            $element->addError($this->handle, Craft::t('app', '“{filename}” is too large.', [
                 'filename' => $filename
             ]));
         }
@@ -425,6 +451,14 @@ class Assets extends BaseRelationField
 
     /**
      * @inheritdoc
+     */
+    public function includeInGqlSchema(GqlSchema $schema): bool
+    {
+        return Gql::canQueryAssets($schema);
+    }
+
+    /**
+     * @inheritdoc
      * @since 3.3.0
      */
     public function getContentGqlType()
@@ -438,6 +472,13 @@ class Assets extends BaseRelationField
         ];
     }
 
+    /**
+     * @inheritdoc
+     */
+    protected function elementPreviewHtml(ElementInterface $element): string
+    {
+        return Cp::elementHtml($element, 'index', Cp::ELEMENT_SIZE_SMALL, null, false, true, $this->previewMode === self::PREVIEW_MODE_FULL);
+    }
 
     // Events
     // -------------------------------------------------------------------------
@@ -483,6 +524,7 @@ class Assets extends BaseRelationField
                     $asset->filename = $file['filename'];
                     $asset->newFolderId = $targetFolderId;
                     $asset->setVolumeId($folder->volumeId);
+                    $asset->uploaderId = Craft::$app->getUser()->getId();
                     $asset->avoidFilenameConflicts = true;
                     $asset->setScenario(Asset::SCENARIO_CREATE);
                     Craft::$app->getElements()->saveElement($asset);
@@ -620,7 +662,7 @@ class Assets extends BaseRelationField
                 $folder = $assetsService->getFolderByUid(explode(':', $source)[1]);
                 $volume = $folder ? $folder->getVolume() : null;
                 return $volume && $userService->checkPermission("viewVolume:{$volume->uid}");
-            });
+            }, true, true, false);
         }
 
         return $sources;
@@ -632,8 +674,15 @@ class Assets extends BaseRelationField
     protected function inputTemplateVariables($value = null, ElementInterface $element = null): array
     {
         $variables = parent::inputTemplateVariables($value, $element);
+
+        $uploadVolume = $this->_uploadVolume();
         $variables['hideSidebar'] = $this->useSingleFolder;
-        $variables['defaultFieldLayoutId'] = $this->_uploadVolume()->fieldLayoutId ?? null;
+        $variables['canUpload'] = (
+            $this->allowUploads &&
+            $uploadVolume &&
+            Craft::$app->getUser()->checkPermission("saveAssetInVolume:$uploadVolume->uid")
+        );
+        $variables['defaultFieldLayoutId'] = $uploadVolume->fieldLayoutId ?? null;
         $variables['defaultUploadLocation'] = $this->_defaultUploadLocation;
 
         return $variables;
@@ -652,20 +701,6 @@ class Assets extends BaseRelationField
         }
 
         return $criteria;
-    }
-
-    /**
-     * @inheritdoc
-     * @since 3.4.19
-     */
-    protected function inputSiteId(ElementInterface $element = null)
-    {
-        if ($element) {
-            // Maintain the same site as the element
-            return $element->siteId;
-        }
-
-        return null;
     }
 
     /**
@@ -849,11 +884,11 @@ class Assets extends BaseRelationField
         if ($this->useSingleFolder) {
             $uploadVolume = $this->singleUploadLocationSource;
             $subpath = $this->singleUploadLocationSubpath;
-            $settingName = Craft::t('app', 'Upload Location');
+            $settingName = Craft::t('app', 'Asset Location');
         } else {
             $uploadVolume = $this->defaultUploadLocationSource;
             $subpath = $this->defaultUploadLocationSubpath;
-            $settingName = Craft::t('app', 'Default Upload Location');
+            $settingName = Craft::t('app', 'Default Asset Location');
         }
 
         $assets = Craft::$app->getAssets();
@@ -873,7 +908,7 @@ class Assets extends BaseRelationField
             // If this is a static path, go ahead and create it
             if (!preg_match('/\{|\}/', $subpath)) {
                 $volumeId = $this->_volumeIdBySourceKey($uploadVolume);
-                $folderId = $assets->ensureFolderByFullPathAndVolume($subpath, Craft::$app->getVolumes()->getVolumeById($volumeId));
+                $folderId = $assets->ensureFolderByFullPathAndVolume($subpath, Craft::$app->getVolumes()->getVolumeById($volumeId), false);
             }
 
             // If this is a new/disabled element, the subpath probably just contained a token that returned null, like {id}

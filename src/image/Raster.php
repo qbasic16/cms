@@ -296,7 +296,7 @@ class Raster extends Image
                 $y2 = $newHeight;
             }
         } else {
-            list($verticalPosition, $horizontalPosition) = explode('-', $cropPosition);
+            [$verticalPosition, $horizontalPosition] = explode('-', $cropPosition);
 
             // Now crop.
             if ($newWidth - $targetWidth > 0) {
@@ -693,7 +693,7 @@ class Raster extends Image
     {
         // Because it's possible for someone to set the quality to 0.
         $quality = $quality ?: $this->_quality;
-        $extension = (!$extension ? $this->getExtension() : $extension);
+        $extension = (!$extension ? mb_strtolower($this->getExtension()) : $extension);
 
         switch ($extension) {
             case 'jpeg':

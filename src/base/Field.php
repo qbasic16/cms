@@ -19,6 +19,7 @@ use craft\helpers\Db;
 use craft\helpers\ElementHelper;
 use craft\helpers\Html;
 use craft\helpers\StringHelper;
+use craft\models\GqlSchema;
 use craft\records\Field as FieldRecord;
 use craft\validators\HandleValidator;
 use craft\validators\UniqueValidator;
@@ -405,7 +406,7 @@ abstract class Field extends SavableComponent implements FieldInterface
     {
         $reflection = new \ReflectionMethod($this, 'isEmpty');
         if ($reflection->getDeclaringClass()->getName() !== self::class) {
-            Craft::$app->getDeprecator()->log('Field::isEmpty()', 'Fields’ isEmpty() method has been deprecated. Use isValueEmpty() instead.');
+            Craft::$app->getDeprecator()->log('Field::isEmpty()', 'Fields’ `isEmpty()` method has been deprecated. Use `isValueEmpty()` instead.');
         }
 
         return $this->isEmpty($value);
@@ -554,6 +555,14 @@ abstract class Field extends SavableComponent implements FieldInterface
     public function getGroup()
     {
         return Craft::$app->getFields()->getGroupById($this->groupId);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function includeInGqlSchema(GqlSchema $schema): bool
+    {
+        return true;
     }
 
     /**
@@ -749,7 +758,7 @@ abstract class Field extends SavableComponent implements FieldInterface
         }
 
         if ($element) {
-            return $this->_isFresh = $element->getHasFreshContent();
+            return $element->getHasFreshContent();
         }
 
         return true;

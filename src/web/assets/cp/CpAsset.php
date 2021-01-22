@@ -112,6 +112,7 @@ JS;
             'All',
             'Any changes will be lost if you leave this page.',
             'Apply this to the {number} remaining conflicts?',
+            'Are you sure you want to close the editor? Any changes will be lost.',
             'Are you sure you want to delete this draft?',
             'Are you sure you want to delete this image?',
             'Are you sure you want to delete “{name}”?',
@@ -119,25 +120,26 @@ JS;
             'Buy {name}',
             'Cancel',
             'Choose a user',
-            'Switching sites will lose unsaved changes. Are you sure you want to switch sites?',
             'Choose which table columns should be visible for this source, and in which order.',
             'Clear',
             'Close Preview',
             'Close',
             'Continue',
             'Copied to clipboard.',
-            'Copy the reference tag',
             'Copy the URL',
+            'Copy the reference tag',
             'Copy to clipboard',
             'Couldn’t delete “{name}”.',
             'Couldn’t save new order.',
             'Create',
+            'Delete draft',
             'Delete folder',
             'Delete heading',
             'Delete it',
+            'Delete their content',
             'Delete them',
-            'Delete user',
-            'Delete users',
+            'Delete {num, plural, =1{user} other{users}} and content',
+            'Delete {num, plural, =1{user} other{users}}',
             'Delete',
             'Display as thumbnails',
             'Display in a table',
@@ -164,9 +166,11 @@ JS;
             'Handle',
             'Header Column Heading',
             'Heading',
+            'Hide nested sources',
             'Hide sidebar',
             'Hide',
             'Incorrect password.',
+            'Information',
             'Instructions',
             'Keep both',
             'Keep me logged in',
@@ -179,9 +183,9 @@ JS;
             'Make required',
             'Merge the folder (any conflicting files will be replaced)',
             'More',
-            'Move',
-            'Move up',
             'Move down',
+            'Move up',
+            'Move',
             'Name',
             'New category',
             'New child',
@@ -203,7 +207,8 @@ JS;
             'Pay {price}',
             'Pending',
             'Previous Page',
-            'Publish changes',
+            'Publish and add another',
+            'Publish draft',
             'Really delete folder “{folder}”?',
             'Remove',
             'Rename folder',
@@ -211,15 +216,19 @@ JS;
             'Reorder',
             'Replace it',
             'Replace the folder (all existing files will be deleted)',
+            'Save and continue editing',
             'Save as a new asset',
+            'Save draft',
             'Save',
             'Saving',
             'Score',
             'Search in subfolders',
+            'Select all',
             'Select transform',
             'Select',
             'Settings',
             'Show nav',
+            'Show nested sources',
             'Show sidebar',
             'Show',
             'Show/hide children',
@@ -227,6 +236,7 @@ JS;
             'Source settings saved',
             'Structure',
             'Submit',
+            'Switching sites will lose unsaved changes. Are you sure you want to switch sites?',
             'Table Columns',
             'The draft could not be saved.',
             'The draft has been saved.',
@@ -240,6 +250,7 @@ JS;
             'Transfer it to:',
             'Try again',
             'Update {type}',
+            'Upload a file',
             'Upload failed for {filename}',
             'Upload files',
             'What do you want to do with their content?',
@@ -299,11 +310,13 @@ JS;
             'allowUppercaseInSlug' => (bool)$generalConfig->allowUppercaseInSlug,
             'apiParams' => Craft::$app->apiParams,
             'asciiCharMap' => StringHelper::asciiCharMap(true, Craft::$app->language),
+            'autosaveDrafts' => (bool)$generalConfig->autosaveDrafts,
             'baseApiUrl' => Craft::$app->baseApiUrl,
             'baseCpUrl' => UrlHelper::cpUrl(),
             'baseSiteUrl' => UrlHelper::siteUrl(),
             'baseUrl' => UrlHelper::url(),
             'canAccessQueueManager' => $userSession->checkPermission('utility:queue-manager'),
+            'clientOs' => $request->getClientOs(),
             'cpTrigger' => $generalConfig->cpTrigger,
             'datepickerOptions' => $this->_datepickerOptions($locale, $currentUser, $generalConfig),
             'defaultCookieOptions' => $this->_defaultCookieOptions(),
@@ -327,7 +340,7 @@ JS;
             'pageTrigger' => $generalConfig->getPageTrigger(),
             'path' => $request->getPathInfo(),
             'pathParam' => $generalConfig->pathParam,
-            'previewIframeResizerOptions' => $generalConfig->previewIframeResizerOptions !== [] ? $generalConfig->previewIframeResizerOptions : null,
+            'previewIframeResizerOptions' => $this->_previewIframeResizerOptions($generalConfig),
             'primarySiteId' => $primarySite ? (int)$primarySite->id : null,
             'primarySiteLanguage' => $primarySite->language ?? null,
             'Pro' => Craft::Pro,
@@ -404,6 +417,24 @@ JS;
         return $groups;
     }
 
+    /**
+     * @param GeneralConfig $generalConfig
+     * @return array|false|null
+     */
+    private function _previewIframeResizerOptions(GeneralConfig $generalConfig)
+    {
+        if (!$generalConfig->useIframeResizer) {
+            return false;
+        }
+
+        // Treat false as [] as well now that useIframeResizer exists
+        if (empty($generalConfig->previewIframeResizerOptions)) {
+            return null;
+        }
+
+        return $generalConfig->previewIframeResizerOptions;
+    }
+
     private function _publishableSections(User $currentUser): array
     {
         $sections = [];
@@ -450,7 +481,7 @@ JS;
                 'handle' => $site->handle,
                 'id' => (int)$site->id,
                 'uid' => (string)$site->uid,
-                'name' => Craft::t('site', $site->name),
+                'name' => Craft::t('site', $site->getName()),
             ];
         }
 

@@ -9,6 +9,7 @@ namespace craft\fieldlayoutelements;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\helpers\Cp;
 use craft\helpers\Html;
 use craft\web\View;
 
@@ -38,7 +39,7 @@ class Template extends BaseUiElement
      */
     protected function selectorIcon()
     {
-        return '@app/icons/template.svg';
+        return '@appicons/template.svg';
     }
 
     /**
@@ -66,16 +67,14 @@ class Template extends BaseUiElement
      */
     public function settingsHtml()
     {
-        return Craft::$app->getView()->renderTemplateMacro('_includes/forms', 'textField', [
-            [
-                'label' => Craft::t('app', 'Template'),
-                'instructions' => Craft::t('app', 'The path to a template file within your `templates/` folder.'),
-                'tip' => Craft::t('app', 'The template will be rendered with an `element` variable.'),
-                'class' => 'code',
-                'id' => 'template',
-                'name' => 'template',
-                'value' => $this->template,
-            ]
+        return Cp::textFieldHtml([
+            'label' => Craft::t('app', 'Template'),
+            'instructions' => Craft::t('app', 'The path to a template file within your `templates/` folder.'),
+            'tip' => Craft::t('app', 'The template will be rendered with an `element` variable.'),
+            'class' => 'code',
+            'id' => 'template',
+            'name' => 'template',
+            'value' => $this->template,
         ]);
     }
 

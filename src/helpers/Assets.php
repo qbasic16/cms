@@ -78,17 +78,17 @@ class Assets
      *
      * @param VolumeInterface $volume
      * @param Asset $asset
-     * @param string $uri Asset URI to use. Defaults to the filename.
+     * @param string|null $uri Asset URI to use. Defaults to the filename.
      * @param AssetTransformIndex|null $transformIndex Transform index, for which the URL is being generated, if any
      * @return string
      */
-    public static function generateUrl(VolumeInterface $volume, Asset $asset, string $uri = null, AssetTransformIndex $transformIndex = null): string
+    public static function generateUrl(VolumeInterface $volume, Asset $asset, ?string $uri = null, ?AssetTransformIndex $transformIndex = null): string
     {
         $baseUrl = $volume->getRootUrl();
         $folderPath = $asset->folderPath;
         $appendix = static::urlAppendix($volume, $asset, $transformIndex);
 
-        return $baseUrl . $folderPath . ($uri ?? $asset->filename) . $appendix;
+        return $baseUrl . str_replace(' ', '%20', $folderPath . ($uri ?? $asset->filename) . $appendix);
     }
 
     /**
@@ -99,7 +99,7 @@ class Assets
      * @param AssetTransformIndex|null $transformIndex Transform index, for which the URL is being generated, if any
      * @return string
      */
-    public static function urlAppendix(VolumeInterface $volume, Asset $file, AssetTransformIndex $transformIndex = null): string
+    public static function urlAppendix(VolumeInterface $volume, Asset $file, ?AssetTransformIndex $transformIndex = null): string
     {
         $appendix = '';
 
@@ -166,7 +166,8 @@ class Assets
             $baseName = $baseNameSanitized;
         }
 
-        return $baseName . $extension;
+        // Put them back together, but keep the full filename w/ extension from going over 255 chars
+        return substr($baseName, 0, 255 - strlen($extension)) . $extension;
     }
 
     /**
@@ -357,13 +358,13 @@ class Assets
      * @return array
      * @throws Exception if the file location is invalid
      */
-    public static function parseFileLocation($location)
+    public static function parseFileLocation(string $location): array
     {
         if (!preg_match('/^\{folder:(\d+)\}(.+)$/', $location, $matches)) {
             throw new Exception('Invalid file location format: ' . $location);
         }
 
-        list(, $folderId, $filename) = $matches;
+        [, $folderId, $filename] = $matches;
 
         return [$folderId, $filename];
     }

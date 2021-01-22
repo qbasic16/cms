@@ -34,12 +34,12 @@ class SectionsController extends Controller
     /**
      * @inheritdoc
      */
-    public function init()
+    public function beforeAction($action)
     {
-        parent::init();
-
         // All section actions require an admin
         $this->requireAdmin();
+
+        return parent::beforeAction($action);
     }
 
     /**
@@ -102,17 +102,6 @@ class SectionsController extends Controller
 
         $variables['section'] = $section;
         $variables['typeOptions'] = $typeOptions;
-
-        $variables['crumbs'] = [
-            [
-                'label' => Craft::t('app', 'Settings'),
-                'url' => UrlHelper::url('settings')
-            ],
-            [
-                'label' => Craft::t('app', 'Sections'),
-                'url' => UrlHelper::url('settings/sections')
-            ],
-        ];
 
         $this->getView()->registerAssetBundle(EditSectionAsset::class);
 
@@ -232,28 +221,12 @@ class SectionsController extends Controller
             throw new NotFoundHttpException('Section not found');
         }
 
-        $crumbs = [
-            [
-                'label' => Craft::t('app', 'Settings'),
-                'url' => UrlHelper::url('settings')
-            ],
-            [
-                'label' => Craft::t('app', 'Sections'),
-                'url' => UrlHelper::url('settings/sections')
-            ],
-            [
-                'label' => Craft::t('site', $section->name),
-                'url' => UrlHelper::url('settings/sections/' . $section->id)
-            ],
-        ];
-
         $title = Craft::t('app', '{section} Entry Types',
             ['section' => Craft::t('site', $section->name)]);
 
         return $this->renderTemplate('settings/sections/_entrytypes/index', [
             'sectionId' => $sectionId,
             'section' => $section,
-            'crumbs' => $crumbs,
             'title' => $title,
         ]);
     }
@@ -325,7 +298,9 @@ class SectionsController extends Controller
             'entryTypeId' => $entryTypeId,
             'entryType' => $entryType,
             'title' => $title,
-            'crumbs' => $crumbs
+            'crumbs' => $crumbs,
+            'typeName' => Entry::displayName(),
+            'lowerTypeName' => Entry::lowerDisplayName(),
         ]);
     }
 

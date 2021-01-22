@@ -278,6 +278,7 @@ Craft.FieldLayoutDesigner = Garnish.Base.extend({
         this.tabDrag.addItems($tab);
 
         this.initTab($tab);
+        this.renameTab($tab);
     },
 
     getElementPlacementInputName: function(tabName) {
@@ -291,7 +292,6 @@ Craft.FieldLayoutDesigner = Garnish.Base.extend({
         elementConfigInputName: 'elementConfigs[__ELEMENT_KEY__]',
     }
 });
-
 
 Craft.FieldLayoutDesigner.Element = Garnish.Base.extend({
     designer: null,
@@ -418,6 +418,13 @@ Craft.FieldLayoutDesigner.Element = Garnish.Base.extend({
 </div>
 `;
         this.hud = new Garnish.HUD(this.$container, bodyHtml, {
+            onShow: (e) => {
+                // Hold off a sec until it's positioned...
+                Garnish.requestAnimationFrame(() => {
+                    // Focus on the first text input
+                    this.hud.$main.find('.text:first').trigger('focus');
+                });
+            },
             onSubmit: () => {
                 this.applyHudSettings();
             }
@@ -491,7 +498,6 @@ Craft.FieldLayoutDesigner.Element = Garnish.Base.extend({
         }
     }
 });
-
 
 Craft.FieldLayoutDesigner.BaseDrag = Garnish.Drag.extend({
     designer: null,
@@ -646,7 +652,6 @@ Craft.FieldLayoutDesigner.BaseDrag = Garnish.Drag.extend({
     }
 });
 
-
 Craft.FieldLayoutDesigner.TabDrag = Craft.FieldLayoutDesigner.BaseDrag.extend({
     /**
      * Constructor
@@ -736,7 +741,6 @@ Craft.FieldLayoutDesigner.TabDrag = Craft.FieldLayoutDesigner.BaseDrag.extend({
 `);
     },
 });
-
 
 Craft.FieldLayoutDesigner.ElementDrag = Craft.FieldLayoutDesigner.BaseDrag.extend({
     draggingLibraryElement: false,

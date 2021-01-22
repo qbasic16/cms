@@ -9,6 +9,7 @@ namespace craft\fieldlayoutelements;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\helpers\Cp;
 use craft\helpers\Html;
 
 /**
@@ -37,7 +38,7 @@ class Heading extends BaseUiElement
      */
     protected function selectorIcon()
     {
-        return '@app/icons/hash.svg';
+        return '@appicons/hash.svg';
     }
 
     /**
@@ -45,13 +46,11 @@ class Heading extends BaseUiElement
      */
     public function settingsHtml()
     {
-        return Craft::$app->getView()->renderTemplateMacro('_includes/forms', 'textField', [
-            [
-                'label' => Craft::t('app', 'Heading'),
-                'id' => 'heading',
-                'name' => 'heading',
-                'value' => $this->heading,
-            ]
+        return Cp::textFieldHtml([
+            'label' => Craft::t('app', 'Heading'),
+            'id' => 'heading',
+            'name' => 'heading',
+            'value' => $this->heading,
         ]);
     }
 

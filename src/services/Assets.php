@@ -722,6 +722,13 @@ class Assets extends Component
 
         // Make the thumb a JPG if the image format isn't safe for web
         $ext = in_array($ext, Image::webSafeFormats(), true) ? $ext : 'jpg';
+
+        // Should we be rasteriszing the thumb?
+        $rasterize = strtolower($ext) === 'svg' && Craft::$app->getConfig()->getGeneral()->rasterizeSvgThumbs;
+        if ($rasterize) {
+            $ext = 'png';
+        }
+
         $dir = Craft::$app->getPath()->getAssetThumbsPath() . DIRECTORY_SEPARATOR . $asset->id;
         $path = $dir . DIRECTORY_SEPARATOR . "thumb-{$width}x{$height}.{$ext}";
 
@@ -734,11 +741,10 @@ class Assets extends Component
             // Generate it
             FileHelper::createDirectory($dir);
             $imageSource = Craft::$app->getAssetTransforms()->getLocalImageSource($asset);
-            $svgSize = max($width, $height);
 
             // hail Mary
             try {
-                $image = Craft::$app->getImages()->loadImage($imageSource, false, $svgSize);
+                $image = Craft::$app->getImages()->loadImage($imageSource, $rasterize, max($width, $height));
 
                 // Prevent resize of all layers
                 if ($image instanceof Raster) {
@@ -748,7 +754,7 @@ class Assets extends Component
                 $image->scaleAndCrop($width, $height);
                 $image->saveAs($path);
             } catch (ImageException $exception) {
-                Craft::warning($exception->getMessage());
+                Craft::warning("Unable to generate a thumbnail for asset $asset->id: {$exception->getMessage()}", __METHOD__);
                 return $this->getIconPath($asset);
             }
         }
@@ -772,7 +778,7 @@ class Assets extends Component
             return $path;
         }
 
-        $svg = file_get_contents(Craft::getAlias('@app/icons/file.svg'));
+        $svg = file_get_contents(Craft::getAlias('@appicons/file.svg'));
 
         $extLength = strlen($ext);
         if ($extLength <= 3) {
@@ -852,26 +858,24 @@ class Assets extends Component
             $base = $baseFileName . '_' . $timestamp;
         }
 
-        $newFilename = $base . '.' . $extension;
-
-        if ($canUse($newFilename)) {
-            return $newFilename;
-        }
-
         $increment = 0;
 
-        while (++$increment) {
-            $newFilename = $base . '_' . $increment . '.' . $extension;
+        while (true) {
+            // Add the increment (if > 0) and keep the full filename w/ increment & extension from going over 255 chars
+            $suffix = ($increment ? "_$increment" : '') . ".$extension";
+            $newFilename = substr($base, 0, 255 - mb_strlen($suffix)) . $suffix;
 
             if ($canUse($newFilename)) {
                 break;
             }
 
             if ($increment === 50) {
-                throw new AssetLogicException(Craft::t('app',
-                    'Could not find a suitable replacement filename for “{filename}”.',
-                    ['filename' => $filename]));
+                throw new AssetLogicException(Craft::t('app', 'Could not find a suitable replacement filename for “{filename}”.', [
+                    'filename' => $originalFilename,
+                ]));
             }
+
+            $increment++;
         }
 
         return $newFilename;

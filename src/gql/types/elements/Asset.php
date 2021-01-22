@@ -41,11 +41,22 @@ class Asset extends Element
         /** @var AssetElement $source */
         $fieldName = $resolveInfo->fieldName;
 
-        if ($fieldName === 'url' && !empty($arguments)) {
+        if (!empty($arguments) && in_array($fieldName, ['url', 'width', 'height'], true)) {
             $generateNow = $arguments['immediately'] ?? Craft::$app->getConfig()->general->generateTransformsBeforePageLoad;
             $transform = Gql::prepareTransformArguments($arguments);
 
-            return $source->getUrl($transform, $generateNow);
+            switch ($fieldName) {
+                case 'url':
+                    return $source->getUrl($transform, $generateNow);
+                case 'width':
+                    return $source->getWidth($transform);
+                case 'height':
+                    return $source->getHeight($transform);
+            }
+        }
+
+        if ($fieldName === 'srcset') {
+            return $source->getSrcset($arguments['sizes']);
         }
 
         return parent::resolve($source, $arguments, $context, $resolveInfo);

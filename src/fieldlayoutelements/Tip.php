@@ -9,6 +9,7 @@ namespace craft\fieldlayoutelements;
 
 use Craft;
 use craft\base\ElementInterface;
+use craft\helpers\Cp;
 use craft\helpers\Html;
 use yii\helpers\Markdown;
 
@@ -50,7 +51,7 @@ class Tip extends BaseUiElement
      */
     protected function selectorIcon()
     {
-        return '@app/icons/' . ($this->_isTip() ? 'tip' : 'alert') . '.svg';
+        return '@appicons/' . ($this->_isTip() ? 'tip' : 'alert') . '.svg';
     }
 
     /**
@@ -58,15 +59,13 @@ class Tip extends BaseUiElement
      */
     public function settingsHtml()
     {
-        return Craft::$app->getView()->renderTemplateMacro('_includes/forms', 'textareaField', [
-            [
-                'label' => $this->_isTip() ? Craft::t('app', 'Tip') : Craft::t('app', 'Warning'),
-                'instructions' => Craft::t('app', 'Can contain Markdown formatting.'),
-                'class' => 'nicetext',
-                'id' => 'tip',
-                'name' => 'tip',
-                'value' => $this->tip,
-            ]
+        return Cp::textareaFieldHtml([
+            'label' => $this->_isTip() ? Craft::t('app', 'Tip') : Craft::t('app', 'Warning'),
+            'instructions' => Craft::t('app', 'Can contain Markdown formatting.'),
+            'class' => ['nicetext'],
+            'id' => 'tip',
+            'name' => 'tip',
+            'value' => $this->tip,
         ]);
     }
 

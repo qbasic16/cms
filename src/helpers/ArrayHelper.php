@@ -27,7 +27,7 @@ class ArrayHelper extends \yii\helpers\ArrayHelper
         }
 
         if (is_string($object) && strpos($object, ',') !== false) {
-            Craft::$app->getDeprecator()->log('ArrayHelper::toArray(string)', 'Passing a string to ArrayHelper::toArray() has been deprecated. Use StringHelper::split() instead.');
+            Craft::$app->getDeprecator()->log('ArrayHelper::toArray(string)', 'Passing a string to `ArrayHelper::toArray()` has been deprecated. Use `StringHelper::split()` instead.');
 
             // Split it on the non-escaped commas
             $object = preg_split('/(?<!\\\),/', $object);
@@ -53,9 +53,6 @@ class ArrayHelper extends \yii\helpers\ArrayHelper
     /**
      * Prepends values to an array.
      *
-     * This should be used instead of `array_unshift($array, ...$values)` when `$values` could be an empty array,
-     * as PHP < 7.3 would throw an error in that case.
-     *
      * ---
      * ```php
      * ArrayHelper::prepend($array, ...$values);
@@ -64,19 +61,15 @@ class ArrayHelper extends \yii\helpers\ArrayHelper
      * @param array &$array the array to be prepended to
      * @param mixed ...$values the values to prepend.
      * @since 3.4.0
+     * @deprecated in 4.0.0. `array_unshift()` should be used instead.
      */
     public static function prepend(array &$array, ...$values)
     {
-        if (!empty($values)) {
-            array_unshift($array, ...$values);
-        }
+        array_unshift($array, ...$values);
     }
 
     /**
      * Appends values to an array.
-     *
-     * This should be used instead of `array_push($array, ...$values)` when `$values` could be an empty array,
-     * as PHP < 7.3 would throw an error in that case.
      *
      * ---
      * ```php
@@ -86,12 +79,11 @@ class ArrayHelper extends \yii\helpers\ArrayHelper
      * @param array &$array the array to be appended to
      * @param mixed ...$values the values to append.
      * @since 3.4.0
+     * @deprecated in 4.0.0. `array_push()` should be used instead.
      */
     public static function append(array &$array, ...$values)
     {
-        if (!empty($values)) {
-            array_push($array, ...$values);
-        }
+        array_push($array, ...$values);
     }
 
     /**
@@ -130,15 +122,18 @@ class ArrayHelper extends \yii\helpers\ArrayHelper
     /**
      * Filters an array to only the values where a given key (the name of a
      * sub-array key or sub-object property) is set to a given value.
-     * Array keys are preserved.
+     *
+     * Array keys are preserved by default.
      *
      * @param array|\Traversable $array the array that needs to be indexed or grouped
      * @param string|\Closure $key the column name or anonymous function which result will be used to index the array
      * @param mixed $value the value that $key should be compared with
      * @param bool $strict whether a strict type comparison should be used when checking array element values against $value
+     * @param bool $keepKeys whether to maintain the array keys. If false, the resulting array
+     * will be re-indexed with integers.
      * @return array the filtered array
      */
-    public static function where($array, $key, $value = true, bool $strict = false): array
+    public static function where($array, $key, $value = true, bool $strict = false, $keepKeys = true): array
     {
         $result = [];
 
@@ -146,7 +141,44 @@ class ArrayHelper extends \yii\helpers\ArrayHelper
             $elementValue = static::getValue($element, $key);
             /** @noinspection TypeUnsafeComparisonInspection */
             if (($strict && $elementValue === $value) || (!$strict && $elementValue == $value)) {
-                $result[$i] = $element;
+                if ($keepKeys) {
+                    $result[$i] = $element;
+                } else {
+                    $result[] = $element;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Filters an array to only the values where a given key (the name of a
+     * sub-array key or sub-object property) is set to one of a given range of values.
+     *
+     * Array keys are preserved by default.
+     *
+     * @param array|\Traversable $array the array that needs to be indexed or grouped
+     * @param string|\Closure $key the column name or anonymous function which result will be used to index the array
+     * @param mixed[] $values the range of values that `$key` should be compared with
+     * @param bool $strict whether a strict type comparison should be used when checking array element values against `$values`
+     * @param bool $keepKeys whether to maintain the array keys. If false, the resulting array
+     * will be re-indexed with integers.
+     * @return array the filtered array
+     * @since 3.5.8
+     */
+    public static function whereIn($array, $key, array $values, bool $strict = false, $keepKeys = true): array
+    {
+        $result = [];
+
+        foreach ($array as $i => $element) {
+            $elementValue = static::getValue($element, $key);
+            if (in_array($elementValue, $values, $strict)) {
+                if ($keepKeys) {
+                    $result[$i] = $element;
+                } else {
+                    $result[] = $element;
+                }
             }
         }
 
@@ -260,12 +292,12 @@ class ArrayHelper extends \yii\helpers\ArrayHelper
     /**
      * Filters empty strings from an array.
      *
-     * @param array $arr
+     * @param array $array
      * @return array
      */
-    public static function filterEmptyStringsFromArray(array $arr): array
+    public static function filterEmptyStringsFromArray(array $array): array
     {
-        return array_filter($arr, function($value): bool {
+        return array_filter($array, function($value): bool {
             return $value !== '';
         });
     }
@@ -273,13 +305,13 @@ class ArrayHelper extends \yii\helpers\ArrayHelper
     /**
      * Returns the first key in a given array.
      *
-     * @param array $arr
-     * @return string|int|null The first key, whether that is a number (if the array is numerically indexed) or a string, or null if $arr isn’t an array, or is empty.
+     * @param array $array
+     * @return string|int|null The first key, whether that is a number (if the array is numerically indexed) or a string, or null if $array isn’t an array, or is empty.
      */
-    public static function firstKey(array $arr)
+    public static function firstKey(array $array)
     {
         /** @noinspection LoopWhichDoesNotLoopInspection */
-        foreach ($arr as $key => $value) {
+        foreach ($array as $key => $value) {
             return $key;
         }
 
@@ -289,12 +321,12 @@ class ArrayHelper extends \yii\helpers\ArrayHelper
     /**
      * Returns the first value in a given array.
      *
-     * @param array $arr
-     * @return mixed The first value, or null if $arr isn’t an array, or is empty.
+     * @param array $array
+     * @return mixed The first value, or null if $array isn’t an array, or is empty.
      */
-    public static function firstValue(array $arr)
+    public static function firstValue(array $array)
     {
-        return !empty($arr) ? reset($arr) : null;
+        return !empty($array) ? reset($array) : null;
     }
 
     /**
